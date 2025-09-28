@@ -30,4 +30,4 @@ def setup_logging(name: Optional[str] = None) -> logging.Logger:
 
 
 # Default logger
-logger = setup_logging("autoglmui")
+logger = setup_logging("AutoGLMUI")

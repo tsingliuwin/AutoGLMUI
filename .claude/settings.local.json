@@ -12,7 +12,8 @@
       "Bash(taskkill:*)",
       "Bash(curl:*)",
       "Bash(powershell:*)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(uv sync:*)"
     ],
     "deny": [],
     "ask": []

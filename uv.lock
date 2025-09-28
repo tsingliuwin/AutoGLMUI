@@ -25,7 +25,7 @@ wheels = [
 ]
 
 [[package]]
-name = "autoglmui"
+name = "AutoGLMUI"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AutoGLM WebSocket Client</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>AutoGLM WebSocket Client</h1>
+
+        <div class="status">
+            <span class="status-indicator {{ status_class }}" id="statusIndicator"></span>
+            <span id="statusText">{{ status_text }}</span>
+        </div>
+
+        <div class="example">
+            示例任务：帮我在小红书找三篇云南的旅游攻略汇总一篇
+        </div>
+
+        <div class="input-section">
+            <textarea id="taskInput" placeholder="请输入您的任务..."></textarea>
+            <button id="sendButton" onclick="sendTask()">发送任务</button>
+        </div>
+
+        <div class="responses" id="responses">
+            <h3>响应记录</h3>
+            <div id="responseList"></div>
+        </div>
+    </div>
+
+    <script>
+        let taskId = 0;
+
+        async function sendTask() {
+            const taskInput = document.getElementById('taskInput');
+            const sendButton = document.getElementById('sendButton');
+            const task = taskInput.value.trim();
+
+            if (!task) {
+                alert('请输入任务内容');
+                return;
+            }
+
+            // Disable button while sending
+            sendButton.disabled = true;
+            sendButton.innerHTML = '<span class="loading"></span> 发送中...';
+
+            try {
+                const response = await fetch('/api/send-task', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ task: task })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    taskInput.value = '';
+                    showResponse(task, '任务已发送', new Date().toISOString());
+                } else {
+                    showResponse(task, `错误: ${result.error}`, new Date().toISOString());
+                }
+            } catch (error) {
+                showResponse(task, `网络错误: ${error.message}`, new Date().toISOString());
+            } finally {
+                sendButton.disabled = false;
+                sendButton.textContent = '发送任务';
+            }
+        }
+
+        function showResponse(task, response, timestamp) {
+            const responseList = document.getElementById('responseList');
+            const responseItem = document.createElement('div');
+            responseItem.className = 'response-item';
+
+            const time = new Date(timestamp).toLocaleString('zh-CN');
+
+            responseItem.innerHTML = `
+                <div class="response-header">
+                    <span>任务 #${++taskId}</span>
+                    <span>${time}</span>
+                </div>
+                <div style="margin-bottom: 10px;">
+                    <strong>任务:</strong> ${task}
+                </div>
+                <div class="response-content">${response}</div>
+            `;
+
+            responseList.insertBefore(responseItem, responseList.firstChild);
+        }
+
+        // Handle Enter key in textarea
+        document.getElementById('taskInput').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && e.ctrlKey) {
+                sendTask();
+            }
+        });
+
+        // Auto-refresh status
+        async function updateStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+
+                const statusIndicator = document.getElementById('statusIndicator');
+                const statusText = document.getElementById('statusText');
+
+                if (data.connected) {
+                    statusIndicator.className = 'status-indicator connected';
+                    statusText.textContent = '已连接';
+                } else {
+                    statusIndicator.className = 'status-indicator disconnected';
+                    statusText.textContent = '未连接';
+                }
+            } catch (error) {
+                console.error('Failed to update status:', error);
+            }
+        }
+
+        // Update status every 5 seconds
+        setInterval(updateStatus, 5000);
+    </script>
+</body>
+</html>

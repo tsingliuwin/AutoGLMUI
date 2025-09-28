@@ -5,10 +5,31 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AutoGLM WebSocket Client</title>
     <link rel="stylesheet" href="/static/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
     <div class="container">
-        <h1>AutoGLM WebSocket Client</h1>
+        <div class="header">
+            <h1>AutoGLM WebSocket Client</h1>
+            <button class="theme-toggle" id="themeToggle" aria-label="切换主题">
+                <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="5"></circle>
+                    <line x1="12" y1="1" x2="12" y2="3"></line>
+                    <line x1="12" y1="21" x2="12" y2="23"></line>
+                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                    <line x1="1" y1="12" x2="3" y2="12"></line>
+                    <line x1="21" y1="12" x2="23" y2="12"></line>
+                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                </svg>
+                <svg class="moon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                </svg>
+            </button>
+        </div>
 
         <div class="status">
             <span class="status-indicator {{ status_class }}" id="statusIndicator"></span>
@@ -20,18 +41,99 @@
         </div>
 
         <div class="input-section">
-            <textarea id="taskInput" placeholder="请输入您的任务..."></textarea>
-            <button id="sendButton" onclick="sendTask()">发送任务</button>
+            <div class="input-wrapper">
+                <textarea
+                    id="taskInput"
+                    placeholder="请输入您的任务...（按 Ctrl+Enter 发送）"
+                    rows="3"
+                    aria-label="任务输入框"
+                ></textarea>
+                <div class="char-count">
+                    <span id="charCount">0</span>/1000
+                </div>
+            </div>
+            <div class="button-group">
+                <button id="sendButton" onclick="sendTask()" aria-label="发送任务">
+                    <span class="button-text">发送任务</span>
+                    <span class="loading-icon"></span>
+                </button>
+                <button id="clearButton" onclick="clearResponses()" aria-label="清空响应记录">
+                    清空记录
+                </button>
+            </div>
         </div>
 
         <div class="responses" id="responses">
-            <h3>响应记录</h3>
+            <div class="responses-header">
+                <h3>响应记录</h3>
+                <span class="response-count" id="responseCount">0 条记录</span>
+            </div>
             <div id="responseList"></div>
+            <div class="empty-state" id="emptyState">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <p>暂无响应记录</p>
+            </div>
         </div>
+
+        <div class="shortcuts-hint">
+            <kbd>Ctrl</kbd> + <kbd>Enter</kbd> 发送任务
+        </div>
+
+        <div class="toast-container" id="toastContainer"></div>
     </div>
 
     <script>
+        // Initialize theme
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+
+        // Theme toggle
+        document.getElementById('themeToggle').addEventListener('click', () => {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+        });
+
         let taskId = 0;
+        let responseCount = 0;
+
+        // Auto-resize textarea
+        const taskInput = document.getElementById('taskInput');
+        taskInput.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 200) + 'px';
+
+            // Update char count
+            const charCount = this.value.length;
+            document.getElementById('charCount').textContent = charCount;
+
+            if (charCount > 1000) {
+                this.value = this.value.substring(0, 1000);
+                document.getElementById('charCount').textContent = 1000;
+            }
+        });
+
+        // Toast notification
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.textContent = message;
+
+            const container = document.getElementById('toastContainer');
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.classList.add('show');
+            }, 10);
+
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
 
         async function sendTask() {
             const taskInput = document.getElementById('taskInput');
@@ -39,13 +141,14 @@
             const task = taskInput.value.trim();
 
             if (!task) {
-                alert('请输入任务内容');
+                showToast('请输入任务内容', 'error');
                 return;
             }
 
             // Disable button while sending
             sendButton.disabled = true;
-            sendButton.innerHTML = '<span class="loading"></span> 发送中...';
+            sendButton.classList.add('loading');
+            sendButton.querySelector('.button-text').textContent = '发送中...';
 
             try {
                 const response = await fetch('/api/send-task', {
@@ -60,42 +163,123 @@
 
                 if (result.success) {
                     taskInput.value = '';
+                    taskInput.style.height = 'auto';
+                    document.getElementById('charCount').textContent = '0';
                     showResponse(task, '任务已发送', new Date().toISOString());
+                    showToast('任务发送成功', 'success');
                 } else {
                     showResponse(task, `错误: ${result.error}`, new Date().toISOString());
+                    showToast(`发送失败: ${result.error}`, 'error');
                 }
             } catch (error) {
                 showResponse(task, `网络错误: ${error.message}`, new Date().toISOString());
+                showToast('网络错误，请检查连接', 'error');
             } finally {
                 sendButton.disabled = false;
-                sendButton.textContent = '发送任务';
+                sendButton.classList.remove('loading');
+                sendButton.querySelector('.button-text').textContent = '发送任务';
             }
         }
 
         function showResponse(task, response, timestamp) {
             const responseList = document.getElementById('responseList');
+            const emptyState = document.getElementById('emptyState');
             const responseItem = document.createElement('div');
             responseItem.className = 'response-item';
 
+            const isSuccess = response.includes('任务已发送');
+            if (isSuccess) {
+                responseItem.classList.add('success');
+            } else if (response.includes('错误') || response.includes('网络错误')) {
+                responseItem.classList.add('error');
+            }
+
             const time = new Date(timestamp).toLocaleString('zh-CN');
+            const responseId = ++taskId;
 
             responseItem.innerHTML = `
                 <div class="response-header">
-                    <span>任务 #${++taskId}</span>
-                    <span>${time}</span>
+                    <div class="response-meta">
+                        <span class="response-id">任务 #${responseId}</span>
+                        <span class="response-time">${time}</span>
+                    </div>
+                    <button class="copy-button" onclick="copyResponse(${responseId})" aria-label="复制响应">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"></path>
+                        </svg>
+                    </button>
                 </div>
-                <div style="margin-bottom: 10px;">
-                    <strong>任务:</strong> ${task}
+                <div class="response-body">
+                    <div class="task-content">
+                        <strong>任务:</strong> ${escapeHtml(task)}
+                    </div>
+                    <div class="response-content">${escapeHtml(response)}</div>
                 </div>
-                <div class="response-content">${response}</div>
             `;
 
+            responseItem.dataset.taskId = responseId;
+            responseItem.dataset.task = task;
+            responseItem.dataset.response = response;
+
             responseList.insertBefore(responseItem, responseList.firstChild);
+            emptyState.style.display = 'none';
+
+            // Update response count
+            responseCount++;
+            updateResponseCount();
+
+            // Add animation
+            setTimeout(() => {
+                responseItem.classList.add('show');
+            }, 10);
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function copyResponse(id) {
+            const responseItem = document.querySelector(`[data-task-id="${id}"]`);
+            if (responseItem) {
+                const task = responseItem.dataset.task;
+                const response = responseItem.dataset.response;
+                const text = `任务: ${task}\n响应: ${response}`;
+
+                navigator.clipboard.writeText(text).then(() => {
+                    showToast('已复制到剪贴板', 'success');
+                }).catch(() => {
+                    showToast('复制失败', 'error');
+                });
+            }
+        }
+
+        function clearResponses() {
+            if (responseCount === 0) {
+                showToast('没有记录需要清空', 'info');
+                return;
+            }
+
+            if (confirm('确定要清空所有响应记录吗？')) {
+                document.getElementById('responseList').innerHTML = '';
+                document.getElementById('emptyState').style.display = 'flex';
+                responseCount = 0;
+                taskId = 0;
+                updateResponseCount();
+                showToast('已清空所有记录', 'success');
+            }
+        }
+
+        function updateResponseCount() {
+            document.getElementById('responseCount').textContent = `${responseCount} 条记录`;
         }
 
         // Handle Enter key in textarea
         document.getElementById('taskInput').addEventListener('keydown', function(e) {
             if (e.key === 'Enter' && e.ctrlKey) {
+                e.preventDefault();
                 sendTask();
             }
         });
@@ -123,6 +307,7 @@
 
         // Update status every 5 seconds
         setInterval(updateStatus, 5000);
+        updateStatus(); // Initial update
     </script>
 </body>
 </html>

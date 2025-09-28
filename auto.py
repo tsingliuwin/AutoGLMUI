@@ -7,8 +7,8 @@ import argparse
 import signal
 from typing import Optional
 
-from src.config_simple import settings
-from src.logging_simple import logger
+from src.config import settings
+from src.logging_config import logger
 from src.websocket_client import WebSocketClient
 
 

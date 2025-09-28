@@ -1,5 +1,5 @@
 """
-Logging configuration for AutoGLMUI
+Logging configuration for AutoGLMUI - Simple version
 """
 import logging
 import sys

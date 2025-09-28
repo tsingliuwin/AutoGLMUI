@@ -2,9 +2,9 @@
 Main entry point for AutoGLMUI
 """
 import uvicorn
-from src.app_simple import app
-from src.config_simple import settings
-from src.logging_simple import logger
+from src.app import app
+from src.config import settings
+from src.logging_config import logger
 
 
 def main():

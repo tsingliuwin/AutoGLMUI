@@ -1,11 +1,11 @@
 """
-Main FastAPI application for AutoGLMUI
+Main FastAPI application for AutoGLMUI - Simple version
 """
 from typing import List, Optional
 from contextlib import asynccontextmanager
 import time
 import asyncio
-from fastapi import FastAPI, Request, HTTPException, Depends
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -14,7 +14,6 @@ from pydantic import BaseModel, Field
 from .config import settings
 from .logging_config import logger
 from .websocket_client import WebSocketClient, ConnectionStatus
-from .dependencies import get_websocket_client
 
 
 class TaskRequest(BaseModel):

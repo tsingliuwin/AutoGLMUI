@@ -8,8 +8,8 @@ import queue
 from typing import Callable, Optional, Dict, Any
 from enum import Enum
 
-from src.logging_simple import logger
-from src.config_simple import settings
+from src.logging_config import logger
+from src.config import settings
 
 
 class ConnectionStatus(Enum):

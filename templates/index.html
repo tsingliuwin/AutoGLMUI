@@ -3,311 +3,492 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AutoGLMUI</title>
+    <title>AutoGLMUI - 智能任务助手</title>
     <link rel="stylesheet" href="/static/style.css">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/layui/2.11.6/css/layui.css" integrity="sha512-dLA91UJdlyzyfUfYLOEnhXEXpY6U2ESWSSdLIvl85UKNUpXWHxJ+DWTZxVSqP2NIitTpxNPxBqC1JiOqynN1og==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/layui/2.11.6/layui.js" integrity="sha512-BM5V+9an5QzWfkhrWFJbzkEj0V5glYZWgxY9o7S+c0JGAm6WzN67ZvyzxvTedzgW04QzMU6aSrh5VjCVCd035A==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 </head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>AutoGLMUI</h1>
-            <button class="theme-toggle" id="themeToggle" aria-label="切换主题">
-                <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="5"></circle>
-                    <line x1="12" y1="1" x2="12" y2="3"></line>
-                    <line x1="12" y1="21" x2="12" y2="23"></line>
-                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
-                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
-                    <line x1="1" y1="12" x2="3" y2="12"></line>
-                    <line x1="21" y1="12" x2="23" y2="12"></line>
-                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
-                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
-                </svg>
-                <svg class="moon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
-                </svg>
-            </button>
-        </div>
-
-        <div class="status">
-            <span class="status-indicator {{ status_class }}" id="statusIndicator"></span>
-            <span id="statusText">{{ status_text }}</span>
-        </div>
-
-        <div class="example">
-            示例任务：帮我在小红书找三篇云南的旅游攻略汇总一篇
-        </div>
-
-        <div class="input-section">
-            <div class="input-wrapper">
-                <textarea
-                    id="taskInput"
-                    placeholder="请输入您的任务...（按 Ctrl+Enter 发送）"
-                    rows="3"
-                    aria-label="任务输入框"
-                ></textarea>
-                <div class="char-count">
-                    <span id="charCount">0</span>/1000
-                </div>
-            </div>
-            <div class="button-group">
-                <button id="sendButton" onclick="sendTask()" aria-label="发送任务">
-                    <span class="button-text">发送任务</span>
-                    <span class="loading-icon"></span>
-                </button>
-                <button id="clearButton" onclick="clearResponses()" aria-label="清空响应记录">
-                    清空记录
-                </button>
-            </div>
-        </div>
-
-        <div class="responses" id="responses">
-            <div class="responses-header">
-                <h3>响应记录</h3>
-                <span class="response-count" id="responseCount">0 条记录</span>
-            </div>
-            <div id="responseList"></div>
-            <div class="empty-state" id="emptyState">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                    <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                <p>暂无响应记录</p>
-            </div>
-        </div>
-
-        <div class="shortcuts-hint">
-            <kbd>Ctrl</kbd> + <kbd>Enter</kbd> 发送任务
-        </div>
-
-        <div class="toast-container" id="toastContainer"></div>
-    </div>
-
-    <script>
-        // Initialize theme
-        const savedTheme = localStorage.getItem('theme') || 'light';
-        document.documentElement.setAttribute('data-theme', savedTheme);
-
-        // Theme toggle
-        document.getElementById('themeToggle').addEventListener('click', () => {
-            const currentTheme = document.documentElement.getAttribute('data-theme');
-            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-            document.documentElement.setAttribute('data-theme', newTheme);
-            localStorage.setItem('theme', newTheme);
-        });
-
-        let taskId = 0;
-        let responseCount = 0;
-
-        // Auto-resize textarea
-        const taskInput = document.getElementById('taskInput');
-        taskInput.addEventListener('input', function() {
-            this.style.height = 'auto';
-            this.style.height = Math.min(this.scrollHeight, 200) + 'px';
-
-            // Update char count
-            const charCount = this.value.length;
-            document.getElementById('charCount').textContent = charCount;
-
-            if (charCount > 1000) {
-                this.value = this.value.substring(0, 1000);
-                document.getElementById('charCount').textContent = 1000;
-            }
-        });
-
-        // Toast notification
-        function showToast(message, type = 'info') {
-            const toast = document.createElement('div');
-            toast.className = `toast toast-${type}`;
-            toast.textContent = message;
-
-            const container = document.getElementById('toastContainer');
-            container.appendChild(toast);
-
-            setTimeout(() => {
-                toast.classList.add('show');
-            }, 10);
-
-            setTimeout(() => {
-                toast.classList.remove('show');
-                setTimeout(() => toast.remove(), 300);
-            }, 3000);
-        }
-
-        async function sendTask() {
-            const taskInput = document.getElementById('taskInput');
-            const sendButton = document.getElementById('sendButton');
-            const task = taskInput.value.trim();
-
-            if (!task) {
-                showToast('请输入任务内容', 'error');
-                return;
-            }
-
-            // Disable button while sending
-            sendButton.disabled = true;
-            sendButton.classList.add('loading');
-            sendButton.querySelector('.button-text').textContent = '发送中...';
-
-            try {
-                const response = await fetch('/api/send-task', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ task: task })
-                });
-
-                const result = await response.json();
-
-                if (result.success) {
-                    taskInput.value = '';
-                    taskInput.style.height = 'auto';
-                    document.getElementById('charCount').textContent = '0';
-                    showResponse(task, '任务已发送', new Date().toISOString());
-                    showToast('任务发送成功', 'success');
-                } else {
-                    showResponse(task, `错误: ${result.error}`, new Date().toISOString());
-                    showToast(`发送失败: ${result.error}`, 'error');
-                }
-            } catch (error) {
-                showResponse(task, `网络错误: ${error.message}`, new Date().toISOString());
-                showToast('网络错误，请检查连接', 'error');
-            } finally {
-                sendButton.disabled = false;
-                sendButton.classList.remove('loading');
-                sendButton.querySelector('.button-text').textContent = '发送任务';
-            }
-        }
-
-        function showResponse(task, response, timestamp) {
-            const responseList = document.getElementById('responseList');
-            const emptyState = document.getElementById('emptyState');
-            const responseItem = document.createElement('div');
-            responseItem.className = 'response-item';
-
-            const isSuccess = response.includes('任务已发送');
-            if (isSuccess) {
-                responseItem.classList.add('success');
-            } else if (response.includes('错误') || response.includes('网络错误')) {
-                responseItem.classList.add('error');
-            }
-
-            const time = new Date(timestamp).toLocaleString('zh-CN');
-            const responseId = ++taskId;
-
-            responseItem.innerHTML = `
-                <div class="response-header">
-                    <div class="response-meta">
-                        <span class="response-id">任务 #${responseId}</span>
-                        <span class="response-time">${time}</span>
-                    </div>
-                    <button class="copy-button" onclick="copyResponse(${responseId})" aria-label="复制响应">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                            <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"></path>
-                        </svg>
+<body class="layui-bg-gray">
+    <div class="layui-container" style="width: 100%; max-width: 1200px; padding: 15px;">
+        <!-- 顶部导航 -->
+        <div class="layui-card" style="margin-bottom: 15px;">
+            <div class="layui-card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <h1 style="margin: 0; font-size: 24px; color: #1E9FFF;">
+                    <i class="layui-icon layui-icon-voice"></i> AutoGLMUI
+                </h1>
+                <div class="layui-btn-group">
+                    <button class="layui-btn layui-btn-primary layui-btn-sm" id="themeToggle" title="切换主题">
+                        <i class="layui-icon layui-icon-light"></i>
                     </button>
                 </div>
-                <div class="response-body">
-                    <div class="task-content">
-                        <strong>任务:</strong> ${escapeHtml(task)}
-                    </div>
-                    <div class="response-content">${escapeHtml(response)}</div>
+            </div>
+        </div>
+
+        <!-- 状态栏 -->
+        <div class="layui-card" style="margin-bottom: 15px;">
+            <div class="layui-card-body" style="text-align: center; padding: 15px;">
+                <div class="layui-inline">
+                    <span class="layui-badge layui-bg-green" id="statusIndicator" style="display: inline-flex; align-items: center; gap: 5px;">
+                        <i class="layui-icon layui-icon-ok-circle"></i>
+                        <span id="statusText">已连接</span>
+                    </span>
                 </div>
-            `;
+            </div>
+        </div>
 
-            responseItem.dataset.taskId = responseId;
-            responseItem.dataset.task = task;
-            responseItem.dataset.response = response;
+        <!-- 示例任务折叠面板 -->
+        <div class="layui-collapse" lay-accordion style="margin-bottom: 15px;" id="examplesCollapse">
+            <div class="layui-colla-item">
+                <h2 class="layui-colla-title">
+                    <i class="layui-icon layui-icon-template-1"></i> 示例任务
+                    <span class="layui-badge layui-bg-blue" style="float: right; margin-right: 20px;">21个示例</span>
+                </h2>
+                <div class="layui-colla-content layui-show">
+                    <div class="layui-row layui-col-space10" id="examplesList">
+                        <!-- 示例1 -->
+                        <div class="layui-col-xs12 layui-col-sm6 layui-col-md3 example-item">
+                            <button class="layui-btn layui-btn-primary layui-btn-fluid example-card" onclick="selectExample('打开微信发一条朋友圈：今天天气真不错！')">
+                                <i class="layui-icon layui-icon-right"></i> <span class="card-content">打开微信发一条朋友圈：今天天气真不错！</span>
+                            </button>
+                        </div>
+                        <!-- 示例2 -->
+                        <div class="layui-col-xs12 layui-col-sm6 layui-col-md3 example-item">
+                            <button class="layui-btn layui-btn-primary layui-btn-fluid example-card" onclick="selectExample('打开抖音搜索猫咪视频')">
+                                <i class="layui-icon layui-icon-right"></i> <span class="card-content">打开抖音搜索猫咪视频</span>
+                            </button>
+                        </div>
+                        <!-- 示例3 -->
+                        <div class="layui-col-xs12 layui-col-sm6 layui-col-md3 example-item">
+                            <button class="layui-btn layui-btn-primary layui-btn-fluid example-card" onclick="selectExample('打开淘宝给妈妈买生日礼物')">
+                                <i class="layui-icon layui-icon-right"></i> <span class="card-content">打开淘宝给妈妈买生日礼物</span>
+                            </button>
+                        </div>
+                        <!-- 示例4 -->
+                        <div class="layui-col-xs12 layui-col-sm6 layui-col-md3 example-item">
+                            <button class="layui-btn layui-btn-primary layui-btn-fluid example-card" onclick="selectExample('打开百度地图搜索附近美食')">
+                                <i class="layui-icon layui-icon-right"></i> <span class="card-content">打开百度地图搜索附近美食</span>
+                            </button>
+                        </div>
+                        <!-- 示例5 -->
+                        <div class="layui-col-xs12 layui-col-sm6 layui-col-md3 example-item">
+                            <button class="layui-btn layui-btn-primary layui-btn-fluid example-card" onclick="selectExample('打开网易云音乐播放周杰伦的歌')">
+                                <i class="layui-icon layui-icon-right"></i> <span class="card-content">打开网易云音乐播放周杰伦的歌</span>
+                            </button>
+                        </div>
+                        <!-- 示例6 -->
+                        <div class="layui-col-xs12 layui-col-sm6 layui-col-md3 example-item">
+                            <button class="layui-btn layui-btn-primary layui-btn-fluid example-card" onclick="selectExample('打开知乎搜索如何学习编程')">
+                                <i class="layui-icon layui-icon-right"></i> <span class="card-content">打开知乎搜索如何学习编程</span>
+                            </button>
+                        </div>
+                        <!-- 示例7 -->
+                        <div class="layui-col-xs12 layui-col-sm6 layui-col-md3 example-item">
+                            <button class="layui-btn layui-btn-primary layui-btn-fluid example-card" onclick="selectExample('打开美团找附近的咖啡厅')">
+                                <i class="layui-icon layui-icon-right"></i> <span class="card-content">打开美团找附近的咖啡厅</span>
+                            </button>
+                        </div>
+                        <!-- 示例8 -->
+                        <div class="layui-col-xs12 layui-col-sm6 layui-col-md3 example-item">
+                            <button class="layui-btn layui-btn-primary layui-btn-fluid example-card" onclick="selectExample('打开B站搜索科技区最新视频')">
+                                <i class="layui-icon layui-icon-right"></i> <span class="card-content">打开B站搜索科技区最新视频</span>
+                            </button>
+                        </div>
+                        <!-- 更多示例默认隐藏 -->
+                        <!-- 示例9 -->
+                        <div class="layui-col-xs12 layui-col-sm6 layui-col-md3 example-item more-example" style="display: none;">
+                            <button class="layui-btn layui-btn-primary layui-btn-fluid example-card" onclick="selectExample('去喜马拉雅寻找关于个人成长的有声书，挑选评价最好的一本开始播放')">
+                                <i class="layui-icon layui-icon-right"></i> <span class="card-content">去喜马拉雅寻找关于个人成长的有声书，挑选评价最好的一本开始播放</span>
+                            </button>
+                        </div>
+                        <!-- 示例10 -->
+                        <div class="layui-col-xs12 layui-col-sm6 layui-col-md3 example-item more-example" style="display: none;">
+                            <button class="layui-btn layui-btn-primary layui-btn-fluid example-card" onclick="selectExample('QQ音乐播放《来财》')">
+                                <i class="layui-icon layui-icon-right"></i> <span class="card-content">QQ音乐播放《来财》</span>
+                            </button>
+                        </div>
+                        <!-- 示例11 -->
+                        <div class="layui-col-xs12 layui-col-sm6 layui-col-md3 example-item more-example" style="display: none;">
+                            <button class="layui-btn layui-btn-primary layui-btn-fluid example-card" onclick="selectExample('用值得买看看肯德基有什么优惠')">
+                                <i class="layui-icon layui-icon-right"></i> <span class="card-content">用值得买看看肯德基有什么优惠</span>
+                            </button>
+                        </div>
+                        <!-- 示例12 -->
+                        <div class="layui-col-xs12 layui-col-sm6 layui-col-md3 example-item more-example" style="display: none;">
+                            <button class="layui-btn layui-btn-primary layui-btn-fluid example-card" onclick="selectExample('帮我在携程找个去东京的旅行团')">
+                                <i class="layui-icon layui-icon-right"></i> <span class="card-content">帮我在携程找个去东京的旅行团</span>
+                            </button>
+                        </div>
+                        <!-- 示例13 -->
+                        <div class="layui-col-xs12 layui-col-sm6 layui-col-md3 example-item more-example" style="display: none;">
+                            <button class="layui-btn layui-btn-primary layui-btn-fluid example-card" onclick="selectExample('发一条小红书说：这是AutoGLM自动帮我发的小红书！')">
+                                <i class="layui-icon layui-icon-right"></i> <span class="card-content">发一条小红书说：这是AutoGLM自动帮我发的小红书！</span>
+                            </button>
+                        </div>
+                        <!-- 示例14 -->
+                        <div class="layui-col-xs12 layui-col-sm6 layui-col-md3 example-item more-example" style="display: none;">
+                            <button class="layui-btn layui-btn-primary layui-btn-fluid example-card" onclick="selectExample('去红果短剧上，播放一个重生题材的短剧')">
+                                <i class="layui-icon layui-icon-right"></i> <span class="card-content">去红果短剧上，播放一个重生题材的短剧</span>
+                            </button>
+                        </div>
+                        <!-- 示例15 -->
+                        <div class="layui-col-xs12 layui-col-sm6 layui-col-md3 example-item more-example" style="display: none;">
+                            <button class="layui-btn layui-btn-primary layui-btn-fluid example-card" onclick="selectExample('去小红书客观总结下autoglm的评价')">
+                                <i class="layui-icon layui-icon-right"></i> <span class="card-content">去小红书客观总结下autoglm的评价</span>
+                            </button>
+                        </div>
+                        <!-- 示例16 -->
+                        <div class="layui-col-xs12 layui-col-sm6 layui-col-md3 example-item more-example" style="display: none;">
+                            <button class="layui-btn layui-btn-primary layui-btn-fluid example-card" onclick="selectExample('在携程上搜索上海外滩附近的五星级酒店，预订一间明晚入住的大床房')">
+                                <i class="layui-icon layui-icon-right"></i> <span class="card-content">在携程上搜索上海外滩附近的五星级酒店，预订一间明晚入住的大床房</span>
+                            </button>
+                        </div>
+                        <!-- 示例17 -->
+                        <div class="layui-col-xs12 layui-col-sm6 layui-col-md3 example-item more-example" style="display: none;">
+                            <button class="layui-btn layui-btn-primary layui-btn-fluid example-card" onclick="selectExample('在小红书搜索北京旅游攻略')">
+                                <i class="layui-icon layui-icon-right"></i> <span class="card-content">在小红书搜索北京旅游攻略</span>
+                            </button>
+                        </div>
+                        <!-- 示例18 -->
+                        <div class="layui-col-xs12 layui-col-sm6 layui-col-md3 example-item more-example" style="display: none;">
+                            <button class="layui-btn layui-btn-primary layui-btn-fluid example-card" onclick="selectExample('饿了么帮我订杯瑞幸的生椰拿铁')">
+                                <i class="layui-icon layui-icon-right"></i> <span class="card-content">饿了么帮我订杯瑞幸的生椰拿铁</span>
+                            </button>
+                        </div>
+                        <!-- 示例19 -->
+                        <div class="layui-col-xs12 layui-col-sm6 layui-col-md3 example-item more-example" style="display: none;">
+                            <button class="layui-btn layui-btn-primary layui-btn-fluid example-card" onclick="selectExample('帮我用高德地图看一下距离五道口最近的农业银行的营业时间')">
+                                <i class="layui-icon layui-icon-right"></i> <span class="card-content">帮我用高德地图看一下距离五道口最近的农业银行的营业时间</span>
+                            </button>
+                        </div>
+                        <!-- 示例20 -->
+                        <div class="layui-col-xs12 layui-col-sm6 layui-col-md3 example-item more-example" style="display: none;">
+                            <button class="layui-btn layui-btn-primary layui-btn-fluid example-card" onclick="selectExample('腾讯视频播放《无相之城》第2集')">
+                                <i class="layui-icon layui-icon-right"></i> <span class="card-content">腾讯视频播放《无相之城》第2集</span>
+                            </button>
+                        </div>
+                        <!-- 示例21 -->
+                        <div class="layui-col-xs12 layui-col-sm6 layui-col-md3 example-item more-example" style="display: none;">
+                            <button class="layui-btn layui-btn-primary layui-btn-fluid example-card" onclick="selectExample('打开微博查看热搜榜')">
+                                <i class="layui-icon layui-icon-right"></i> <span class="card-content">打开微博查看热搜榜</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="layui-text-center" style="margin-top: 10px;">
+                        <button class="layui-btn layui-btn-xs layui-btn-primary" onclick="loadMoreExamples()">
+                            <i class="layui-icon layui-icon-down"></i> 展开更多
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
 
-            responseList.insertBefore(responseItem, responseList.firstChild);
-            emptyState.style.display = 'none';
+        <!-- 任务输入区 -->
+        <div class="layui-card" style="margin-bottom: 15px;">
+            <div class="layui-card-body">
+                <form class="layui-form" action="">
+                    <div class="layui-form-item layui-form-text">
+                        <div class="layui-input-block" style="margin-left: 0;">
+                            <textarea id="taskInput" placeholder="请输入您的任务...（按 Ctrl+Enter 发送）"
+                                class="layui-textarea" style="min-height: 100px; resize: vertical;"></textarea>
+                            <div style="text-align: right; margin-top: 5px; font-size: 12px; color: #999;">
+                                <span id="charCount">0</span>/1000
+                            </div>
+                        </div>
+                    </div>
+                    <div class="layui-form-item" style="text-align: center; margin-bottom: 0;">
+                        <button type="button" class="layui-btn" id="sendButton" lay-submit lay-filter="taskForm">
+                            <i class="layui-icon layui-icon-release"></i> 发送任务
+                        </button>
+                        <button type="button" class="layui-btn layui-btn-primary" id="clearButton">
+                            <i class="layui-icon layui-icon-delete"></i> 清空记录
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
 
-            // Update response count
-            responseCount++;
-            updateResponseCount();
+        <!-- 响应记录 -->
+        <div class="layui-card">
+            <div class="layui-card-header">
+                <span style="font-weight: bold;">
+                    <i class="layui-icon layui-icon-file-b"></i> 响应记录
+                </span>
+                <span class="layui-badge layui-bg-gray" id="responseCount" style="float: right;">0 条记录</span>
+            </div>
+            <div class="layui-card-body">
+                <div id="responseList" style="max-height: 500px; overflow-y: auto;">
+                    <div class="layui-text-center" id="emptyState">
+                        <i class="layui-icon layui-icon-face-surprised" style="font-size: 64px; color: #999;"></i>
+                        <p style="color: #999; margin-top: 10px;">暂无响应记录</p>
+                    </div>
+                </div>
+            </div>
+        </div>
 
-            // Add animation
-            setTimeout(() => {
-                responseItem.classList.add('show');
-            }, 10);
-        }
+        <!-- 快捷键提示 -->
+        <div class="layui-text-center" style="margin-top: 15px; color: #999; font-size: 13px;">
+            <span class="layui-badge layui-bg-gray">Ctrl</span> +
+            <span class="layui-badge layui-bg-gray">Enter</span>
+            快速发送任务
+        </div>
+    </div>
 
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
+    <!-- Toast容器 -->
+    <div class="toast-container" id="toastContainer"></div>
 
-        function copyResponse(id) {
-            const responseItem = document.querySelector(`[data-task-id="${id}"]`);
-            if (responseItem) {
-                const task = responseItem.dataset.task;
-                const response = responseItem.dataset.response;
-                const text = `任务: ${task}\n响应: ${response}`;
+    <script>
+        layui.use(['layer', 'form', 'element', 'util'], function(){
+            var layer = layui.layer;
+            var form = layui.form;
+            var element = layui.element;
+            var util = layui.util;
+            var $ = layui.$;
 
-                navigator.clipboard.writeText(text).then(() => {
-                    showToast('已复制到剪贴板', 'success');
-                }).catch(() => {
-                    showToast('复制失败', 'error');
+            // 初始化主题
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            if (savedTheme === 'dark') {
+                $('body').addClass('dark-theme');
+                $('#themeToggle').html('<i class="layui-icon layui-icon-moon"></i>');
+            }
+
+            // 选择示例
+            window.selectExample = function(example) {
+                $('#taskInput').val(example);
+                $('#charCount').text(example.length);
+                layer.msg('已填入示例任务', {icon: 1, time: 1000});
+                $('#taskInput').focus();
+
+                // 如果当前是展开状态，自动收起
+                const btn = $('button[onclick="loadMoreExamples()"]');
+                const isExpanded = btn.html().includes('收起示例');
+                if (isExpanded) {
+                    setTimeout(function() {
+                        $('.more-example').hide();
+                        btn.html('<i class="layui-icon layui-icon-down"></i> 展开更多');
+                    }, 200);
+                }
+
+                // 移动端自动收起键盘
+                if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+                    $('#taskInput').blur();
+                }
+            };
+
+            // 展开更多示例
+            window.loadMoreExamples = function() {
+                const btn = event.target.closest('button');
+                const isExpanded = btn.innerHTML.includes('收起示例');
+
+                if (isExpanded) {
+                    // 收起
+                    $('.more-example').hide();
+                    btn.innerHTML = '<i class="layui-icon layui-icon-down"></i> 展开更多';
+                } else {
+                    // 展开
+                    $('.more-example').show();
+                    btn.innerHTML = '<i class="layui-icon layui-icon-up"></i> 收起示例';
+                }
+            };
+
+            // 主题切换
+            $('#themeToggle').on('click', function(){
+                const body = $('body');
+                if (body.hasClass('dark-theme')) {
+                    body.removeClass('dark-theme');
+                    localStorage.setItem('theme', 'light');
+                    $(this).html('<i class="layui-icon layui-icon-light"></i>');
+                } else {
+                    body.addClass('dark-theme');
+                    localStorage.setItem('theme', 'dark');
+                    $(this).html('<i class="layui-icon layui-icon-moon"></i>');
+                }
+            });
+
+            let taskId = 0;
+            let responseCount = 0;
+
+            // 文本框字符计数
+            $('#taskInput').on('input', function(){
+                const length = $(this).val().length;
+                $('#charCount').text(length);
+                if (length > 1000) {
+                    $(this).val($(this).val().substring(0, 1000));
+                    $('#charCount').text(1000);
+                }
+            });
+
+            // 发送任务
+            window.sendTask = function() {
+                const task = $('#taskInput').val().trim();
+                if (!task) {
+                    layer.msg('请输入任务内容', {icon: 2});
+                    return;
+                }
+
+                // 显示加载
+                const loadIndex = layer.load(2, {shade: [0.1, '#fff']});
+
+                $.ajax({
+                    url: '/api/send-task',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ task: task }),
+                    success: function(result) {
+                        layer.close(loadIndex);
+                        if (result.success) {
+                            $('#taskInput').val('');
+                            $('#charCount').text('0');
+                            showResponse(task, '任务已发送', new Date().toISOString());
+                            layer.msg('任务发送成功', {icon: 1});
+                        } else {
+                            showResponse(task, `错误: ${result.error}`, new Date().toISOString());
+                            layer.msg(`发送失败: ${result.error}`, {icon: 2});
+                        }
+                    },
+                    error: function(xhr) {
+                        layer.close(loadIndex);
+                        const errorMsg = xhr.responseJSON?.error || '网络错误';
+                        showResponse(task, `网络错误: ${errorMsg}`, new Date().toISOString());
+                        layer.msg('网络错误，请检查连接', {icon: 2});
+                    }
+                });
+            };
+
+            // 显示响应
+            function showResponse(task, response, timestamp) {
+                const responseList = $('#responseList');
+                const emptyState = $('#emptyState');
+
+                const isSuccess = response.includes('任务已发送');
+                const statusClass = isSuccess ? 'layui-badge layui-bg-green' : 'layui-badge layui-bg-red';
+                const statusIcon = isSuccess ? 'layui-icon-ok-circle' : 'layui-icon-close-fill';
+
+                const time = util.toDateString(new Date(timestamp), 'yyyy-MM-dd HH:mm:ss');
+                const responseId = ++taskId;
+
+                const responseItem = $(`
+                    <div class="layui-timeline-item" style="padding-bottom: 20px;">
+                        <i class="layui-icon layui-timeline-axis ${statusIcon}" style="color: ${isSuccess ? '#5FB878' : '#FF5722'};"></i>
+                        <div class="layui-timeline-content layui-text">
+                            <div class="layui-card">
+                                <div class="layui-card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                                    <span class="${statusClass}" style="font-size: 12px;">任务 #${responseId}</span>
+                                    <span style="color: #999; font-size: 12px;">${time}</span>
+                                </div>
+                                <div class="layui-card-body">
+                                    <blockquote class="layui-elem-quote" style="margin-bottom: 10px;">
+                                        <strong>任务:</strong> ${task}
+                                    </blockquote>
+                                    <div style="color: #666; line-height: 1.6;">
+                                        ${response}
+                                    </div>
+                                    <div style="margin-top: 10px;">
+                                        <button class="layui-btn layui-btn-xs layui-btn-primary" onclick="copyResponse(${responseId})">
+                                            <i class="layui-icon layui-icon-file"></i> 复制
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `);
+
+                responseItem.data('taskId', responseId);
+                responseItem.data('task', task);
+                responseItem.data('response', response);
+
+                if (responseCount === 0) {
+                    responseList.empty();
+                    responseList.addClass('layui-timeline');
+                }
+
+                responseList.prepend(responseItem);
+                emptyState.hide();
+
+                responseCount++;
+                updateResponseCount();
+            }
+
+            // 复制响应
+            window.copyResponse = function(id) {
+                const responseItem = $(`[data-task-id="${id}"]`);
+                if (responseItem.length) {
+                    const task = responseItem.data('task');
+                    const response = responseItem.data('response');
+                    const text = `任务: ${task}\n响应: ${response}`;
+
+                    navigator.clipboard.writeText(text).then(function() {
+                        layer.msg('已复制到剪贴板', {icon: 1});
+                    }).catch(function() {
+                        layer.msg('复制失败', {icon: 2});
+                    });
+                }
+            };
+
+            // 清空响应
+            window.clearResponses = function() {
+                if (responseCount === 0) {
+                    layer.msg('没有记录需要清空', {icon: 0});
+                    return;
+                }
+
+                layer.confirm('确定要清空所有响应记录吗？', {icon: 3, title: '提示'}, function(index){
+                    $('#responseList').empty().removeClass('layui-timeline');
+                    $('#emptyState').show();
+                    responseCount = 0;
+                    taskId = 0;
+                    updateResponseCount();
+                    layer.close(index);
+                    layer.msg('已清空所有记录', {icon: 1});
+                });
+            };
+
+            // 更新响应计数
+            function updateResponseCount() {
+                $('#responseCount').text(`${responseCount} 条记录`);
+            }
+
+            // 绑定按钮事件
+            $('#sendButton').on('click', sendTask);
+            $('#clearButton').on('click', clearResponses);
+
+            // Ctrl+Enter 发送
+            $('#taskInput').on('keydown', function(e){
+                if (e.ctrlKey && e.keyCode === 13) {
+                    e.preventDefault();
+                    sendTask();
+                }
+            });
+
+            // 自动更新状态
+            function updateStatus() {
+                $.get('/api/status', function(data){
+                    const statusIndicator = $('#statusIndicator');
+                    const statusText = $('#statusText');
+
+                    if (data.connected) {
+                        statusIndicator.removeClass('layui-bg-red').addClass('layui-bg-green');
+                        statusIndicator.html('<i class="layui-icon layui-icon-ok-circle"></i> <span>已连接</span>');
+                    } else {
+                        statusIndicator.removeClass('layui-bg-green').addClass('layui-bg-red');
+                        statusIndicator.html('<i class="layui-icon layui-icon-close-fill"></i> <span>未连接</span>');
+                    }
+                }).fail(function(){
+                    const statusIndicator = $('#statusIndicator');
+                    statusIndicator.removeClass('layui-bg-green').addClass('layui-bg-red');
+                    statusIndicator.html('<i class="layui-icon layui-icon-close-fill"></i> <span>未连接</span>');
                 });
             }
-        }
 
-        function clearResponses() {
-            if (responseCount === 0) {
-                showToast('没有记录需要清空', 'info');
-                return;
-            }
+            // 每5秒更新状态
+            setInterval(updateStatus, 5000);
+            updateStatus();
 
-            if (confirm('确定要清空所有响应记录吗？')) {
-                document.getElementById('responseList').innerHTML = '';
-                document.getElementById('emptyState').style.display = 'flex';
-                responseCount = 0;
-                taskId = 0;
-                updateResponseCount();
-                showToast('已清空所有记录', 'success');
-            }
-        }
-
-        function updateResponseCount() {
-            document.getElementById('responseCount').textContent = `${responseCount} 条记录`;
-        }
-
-        // Handle Enter key in textarea
-        document.getElementById('taskInput').addEventListener('keydown', function(e) {
-            if (e.key === 'Enter' && e.ctrlKey) {
-                e.preventDefault();
-                sendTask();
+            // 响应式处理
+            if (navigator.userAgent.match(/(iPhone|iPod|Android|ios|iOS|iPad|Backerry|WebOS|Symbian|Windows Phone|Phone)/i)) {
+                $('.shortcuts-hint').hide();
             }
         });
-
-        // Auto-refresh status
-        async function updateStatus() {
-            try {
-                const response = await fetch('/api/status');
-                const data = await response.json();
-
-                const statusIndicator = document.getElementById('statusIndicator');
-                const statusText = document.getElementById('statusText');
-
-                if (data.connected) {
-                    statusIndicator.className = 'status-indicator connected';
-                    statusText.textContent = '已连接';
-                } else {
-                    statusIndicator.className = 'status-indicator disconnected';
-                    statusText.textContent = '未连接';
-                }
-            } catch (error) {
-                console.error('Failed to update status:', error);
-            }
-        }
-
-        // Update status every 5 seconds
-        setInterval(updateStatus, 5000);
-        updateStatus(); // Initial update
     </script>
 </body>
 </html>

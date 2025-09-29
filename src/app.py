@@ -15,6 +15,9 @@ from pydantic import BaseModel, Field
 from .config import settings
 from .logging_config import logger
 from .websocket_client import WebSocketClient, ConnectionStatus
+import os
+import datetime
+import shutil
 
 
 class TaskRequest(BaseModel):
@@ -48,6 +51,40 @@ class AutoGLMUI:
         self._startup_task: Optional[asyncio.Task] = None
         self.response_queues: dict = {}  # 存储streaming响应队列
         self._response_event = asyncio.Event()  # 用于通知新响应的事件
+        self.task_log_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'logs', 'tasks.log')
+        self.pending_tasks: dict = {}  # 存储等待响应的任务 {task_id: task_content}
+        self._ensure_log_directory()
+
+    def _ensure_log_directory(self):
+        """确保日志目录存在"""
+        log_dir = os.path.dirname(self.task_log_file)
+        if not os.path.exists(log_dir):
+            os.makedirs(log_dir)
+            logger.info(f"Created log directory: {log_dir}")
+
+    def _log_task_execution(self, task: str, task_id: str, status: str = "started", details: str = "", response_data: dict = None):
+        """记录任务执行日志到文件"""
+        try:
+            timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+            log_entry = {
+                "timestamp": timestamp,
+                "task_id": task_id,
+                "task": task,
+                "status": status,
+                "details": details
+            }
+
+            # 如果是响应类型，添加额外的信息
+            if response_data:
+                log_entry["response_type"] = response_data.get("msg_type", "unknown")
+                log_entry["response_size"] = len(str(response_data.get("message", "")))
+
+            with open(self.task_log_file, 'a', encoding='utf-8') as f:
+                f.write(json.dumps(log_entry, ensure_ascii=False) + '\n')
+
+            logger.info(f"Task logged: {task_id[:8]} - {status}")
+        except Exception as e:
+            logger.error(f"Failed to log task execution: {e}")
 
     async def initialize(self):
         """Initialize the WebSocket client"""
@@ -129,9 +166,37 @@ class AutoGLMUI:
                         self.ws_client._conversation_id = msg_data.get('conversation_id')
                         logger.info(f"Updated conversation_id: {msg_data.get('conversation_id')}")
 
-                elif msg_type in ["agent_response", "task_result"]:
+                elif msg_type in ["agent_response", "task_result", "task_complete", "agent_finish"]:
                     # 重要的任务相关消息
                     logger.info(f"Received {msg_type} message")
+
+                    # 获取原始任务内容
+                    task_content = "Unknown task"
+                    task_id = None
+
+                    # 尝试从pending_tasks中查找最匹配的任务
+                    if self.pending_tasks:
+                        # 如果有pending任务，使用最旧的那个
+                        task_id, task_content = next(iter(self.pending_tasks.items()))
+                        # 如果收到任务完成相关的消息，从pending中移除
+                        if msg_type in ["task_result", "task_complete", "agent_finish"]:
+                            del self.pending_tasks[task_id]
+                    else:
+                        # 如果没有pending任务，尝试从最近响应中查找
+                        for resp in reversed(self.recent_responses[-10:]):
+                            if resp.get('msg_type') == 'user_message' or (resp.get('parsed_data') and resp['parsed_data'].get('msg_type') == 'user_message'):
+                                task_content = resp.get('parsed_data', {}).get('data', {}).get('content', 'Unknown task')
+                                break
+
+                    # 记录任务响应
+                    response_task_id = task_id if task_id else f"response_{response_data.get('id', '')}"
+                    self._log_task_execution(
+                        task_content,
+                        response_task_id,
+                        "response_received",
+                        f"Received {msg_type} with {len(message)} bytes",
+                        response_data=response_data
+                    )
 
                 else:
                     # 其他消息类型
@@ -193,23 +258,43 @@ class AutoGLMUI:
         await asyncio.sleep(0.5)
 
         try:
+            # 生成更唯一的任务ID
+            task_id = f"task_{int(time.time() * 1000)}_{len(self.recent_responses)}"
+
+            # 记录任务开始
+            self._log_task_execution(task, task_id, "started", "Preparing to send task to AutoGLM")
+
+            # 将任务添加到待处理列表
+            self.pending_tasks[task_id] = task
+
             message = self.ws_client.create_message(task)
+
             logger.info(f"About to send task: {task}")
             success = self.ws_client.send_message(message)
 
             if success:
+                # 记录任务发送成功
+                self._log_task_execution(task, task_id, "sent", "Task successfully sent via WebSocket")
                 return TaskResponse(
                     success=True,
                     message="Task sent successfully",
-                    task_id=str(len(self.recent_responses))
+                    task_id=task_id
                 )
             else:
+                # 记录任务发送失败
+                self._log_task_execution(task, task_id, "failed", "Failed to send task through WebSocket")
+                # 从待处理列表中移除
+                if task_id in self.pending_tasks:
+                    del self.pending_tasks[task_id]
                 raise HTTPException(
                     status_code=500,
                     detail="Failed to send task through WebSocket"
                 )
 
         except Exception as e:
+            # 记录任务异常
+            task_id = f"task_{int(time.time() * 1000)}_error"
+            self._log_task_execution(task, task_id, "error", f"Exception: {str(e)}")
             logger.error(f"Error sending task: {e}")
             raise HTTPException(
                 status_code=500,
@@ -298,6 +383,19 @@ async def read_root(request: Request):
     )
 
 
+@app.get("/test-history", response_class=HTMLResponse)
+async def test_history_page(request: Request):
+    """Serve the test page for history functionality"""
+    return templates.TemplateResponse(
+        "test_history.html",
+        {
+            "request": request
+        }
+    )
+
+
+
+
 
 
 @app.post("/api/send-task", response_model=TaskResponse)
@@ -334,6 +432,8 @@ async def get_recent_responses(limit: int = 10):
     return {"responses": app_instance.get_recent_responses(limit)}
 
 
+
+
 @app.post("/api/send-task-stream")
 async def send_task_stream(task_request: TaskRequest):
     """Send a task through WebSocket and stream responses using HTTP chunked encoding"""
@@ -348,7 +448,13 @@ async def send_task_stream(task_request: TaskRequest):
             detail="WebSocket client is not connected"
         )
 
-    task_id = str(int(time.time() * 1000))
+    # 使用与send_task相同的task_id格式
+    task_id = f"stream_{int(time.time() * 1000)}_{len(app_instance.recent_responses)}"
+
+    # 记录streaming任务开始
+    app_instance._log_task_execution(task_request.task, task_id, "stream_started", "Starting streaming task")
+    app_instance.pending_tasks[task_id] = task_request.task
+
     queue = asyncio.Queue()
     app_instance.response_queues[task_id] = queue
     logger.info(f"Created queue for task_id: {task_id}")
@@ -401,6 +507,13 @@ async def send_task_stream(task_request: TaskRequest):
 
                             # 检查是否是任务结束消息
                             if msg_type in ['task_result', 'task_complete', 'agent_finish']:
+                                # 记录任务完成
+                                app_instance._log_task_execution(
+                                    app_instance.pending_tasks.get(task_id, "Unknown task"),
+                                    task_id,
+                                    "stream_completed",
+                                    f"Streaming task completed with {response_count} responses"
+                                )
                                 # 延迟一下再结束，确保所有消息都已发送
                                 await asyncio.sleep(2)
                                 yield json.dumps({
@@ -439,9 +552,19 @@ async def send_task_stream(task_request: TaskRequest):
                     break
 
         finally:
-            # 清理队列
+            # 清理队列和pending任务
             if task_id in app_instance.response_queues:
                 del app_instance.response_queues[task_id]
+            if task_id in app_instance.pending_tasks:
+                # 如果任务未完成，记录为中断
+                if task_id.startswith('stream_'):
+                    app_instance._log_task_execution(
+                        app_instance.pending_tasks[task_id],
+                        task_id,
+                        "stream_interrupted",
+                        "Stream was interrupted or ended unexpectedly"
+                    )
+                del app_instance.pending_tasks[task_id]
 
     return StreamingResponse(
         generate(),

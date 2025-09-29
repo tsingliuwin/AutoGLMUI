@@ -16,7 +16,7 @@
                 <h1 style="margin: 0; font-size: 24px; color: #1E9FFF;">
                     <i class="layui-icon layui-icon-voice"></i> AutoGLMUI
                 </h1>
-            </div>
+              </div>
         </div>
 
         <!-- 状态栏 -->
@@ -194,7 +194,7 @@
                         <button type="button" class="layui-btn" id="sendButton" lay-submit lay-filter="taskForm">
                             <i class="layui-icon layui-icon-release"></i> 发送任务
                         </button>
-                        <button type="button" class="layui-btn layui-btn-primary" id="clearButton">
+                            <button type="button" class="layui-btn layui-btn-warm" id="clearButton">
                             <i class="layui-icon layui-icon-delete"></i> 清空记录
                         </button>
                     </div>
@@ -226,7 +226,8 @@
             <span class="layui-badge layui-bg-gray">Enter</span>
             快速发送任务
         </div>
-    </div>
+
+      </div>
 
     <!-- Toast容器 -->
     <div class="toast-container" id="toastContainer"></div>
@@ -294,6 +295,185 @@
             let taskId = 0;
             let responseCount = 0;
 
+            // 本地存储相关函数
+            function saveToLocalStorage(key, data) {
+                try {
+                    console.log(`[LocalStorage] 尝试保存数据到 ${key}:`, { dataLength: JSON.stringify(data).length });
+                    const jsonData = JSON.stringify(data);
+                    // 检查存储空间是否足够
+                    if (jsonData.length > 5 * 1024 * 1024) { // 5MB限制
+                        console.error('数据过大，超过localStorage限制');
+                        return false;
+                    }
+                    localStorage.setItem(key, jsonData);
+                    console.log(`[LocalStorage] 成功保存到 ${key}, 大小:`, (jsonData.length / 1024).toFixed(2) + ' KB');
+                    return true;
+                } catch (e) {
+                    console.error(`[LocalStorage] 保存到 ${key} 失败:`, e);
+                    console.error('错误详情:', {
+                        name: e.name,
+                        message: e.message,
+                        stack: e.stack,
+                        key: key,
+                        dataSize: JSON.stringify(data).length
+                    });
+                    if (e.name === 'QuotaExceededError') {
+                        console.error('localStorage存储空间已满，尝试清理旧数据');
+                        // 尝试清理一些旧数据
+                        try {
+                            const keys = Object.keys(localStorage);
+                            for (let key of keys) {
+                                if (key.startsWith('taskHistory_')) {
+                                    localStorage.removeItem(key);
+                                    console.log('已清理旧数据:', key);
+                                    break;
+                                }
+                            }
+                            // 再次尝试保存
+                            localStorage.setItem(key, JSON.stringify(data));
+                            return true;
+                        } catch (e2) {
+                            console.error('清理后仍然无法保存:', e2);
+                            return false;
+                        }
+                    }
+                    return false;
+                }
+            }
+
+            function loadFromLocalStorage(key, defaultValue = null) {
+                try {
+                    console.log(`[LocalStorage] 尝试从 ${key} 加载数据`);
+                    const data = localStorage.getItem(key);
+                    if (data) {
+                        console.log(`[LocalStorage] 从 ${key} 加载到数据，大小:`, (data.length / 1024).toFixed(2) + ' KB');
+                        return JSON.parse(data);
+                    } else {
+                        console.log(`[LocalStorage] ${key} 中没有数据，返回默认值`);
+                        return defaultValue;
+                    }
+                } catch (e) {
+                    console.error(`[LocalStorage] 从 ${key} 加载失败:`, e);
+                    return defaultValue;
+                }
+            }
+
+            // 保存任务历史
+            function saveTaskHistory(taskData) {
+                try {
+                    let history = loadFromLocalStorage('taskHistory', []);
+                    history.unshift(taskData); // 添加到开头
+                    // 只保留最近100条
+                    if (history.length > 100) {
+                        history = history.slice(0, 100);
+                    }
+                    const success = saveToLocalStorage('taskHistory', history);
+                    if (success) {
+                        console.log('历史记录已保存，当前总数:', history.length);
+                        updateHistoryCount();
+                        return true;
+                    } else {
+                        console.error('保存历史记录失败');
+                        return false;
+                    }
+                } catch (e) {
+                    console.error('保存任务历史时出错:', e);
+                    return false;
+                }
+            }
+
+            // 加载任务历史
+            function loadTaskHistory() {
+                return loadFromLocalStorage('taskHistory', []);
+            }
+
+            // 压缩响应内容以节省空间
+            function compressResponseContent(html) {
+                try {
+                    // 创建一个临时的div来解析HTML
+                    const temp = document.createElement('div');
+                    temp.innerHTML = html;
+
+                    // 移除不必要的属性和元素以节省空间
+                    // 1. 移除progress元素
+                    const progressElements = temp.querySelectorAll('.layui-progress');
+                    progressElements.forEach(el => el.remove());
+
+                    // 2. 移除loading动画
+                    const loadingIcons = temp.querySelectorAll('.layui-icon-loading');
+                    loadingIcons.forEach(el => {
+                        el.classList.remove('layui-anim', 'layui-anim-rotate', 'layui-anim-loop');
+                    });
+
+                    // 3. 简化class属性
+                    const allElements = temp.querySelectorAll('*');
+                    allElements.forEach(el => {
+                        // 只保留必要的class
+                        if (el.className) {
+                            const classes = el.className.split(' ').filter(cls =>
+                                cls.startsWith('response-') ||
+                                cls === 'response-content' ||
+                                cls === 'status-text'
+                            );
+                            el.className = classes.join(' ');
+                        }
+                    });
+
+                    // 4. 移除data属性
+                    allElements.forEach(el => {
+                        const attrs = Array.from(el.attributes);
+                        attrs.forEach(attr => {
+                            if (attr.name.startsWith('data-')) {
+                                el.removeAttribute(attr.name);
+                            }
+                        });
+                    });
+
+                    return temp.innerHTML;
+                } catch (e) {
+                    console.error('压缩响应内容失败:', e);
+                    return html; // 返回原始HTML
+                }
+            }
+
+        // 检查localStorage使用情况
+            function checkLocalStorageUsage() {
+                try {
+                    let total = 0;
+                    let taskHistorySize = 0;
+
+                    // 计算总使用量
+                    for (let key in localStorage) {
+                        if (localStorage.hasOwnProperty(key)) {
+                            const size = localStorage[key].length;
+                            total += size;
+                            if (key === 'taskHistory') {
+                                taskHistorySize = size;
+                            }
+                        }
+                    }
+
+                    // localStorage通常有5MB限制
+                    const limit = 5 * 1024 * 1024;
+                    const usagePercent = (total / limit * 100).toFixed(2);
+
+                    console.log('localStorage使用情况:');
+                    console.log(`- 总使用量: ${(total / 1024).toFixed(2)} KB (${usagePercent}%)`);
+                    console.log(`- taskHistory大小: ${(taskHistorySize / 1024).toFixed(2)} KB`);
+                    console.log(`- 历史记录数量: ${loadFromLocalStorage('taskHistory', []).length}`);
+
+                    return {
+                        total: total,
+                        limit: limit,
+                        usagePercent: usagePercent,
+                        taskHistorySize: taskHistorySize
+                    };
+                } catch (e) {
+                    console.error('检查localStorage使用情况失败:', e);
+                    return null;
+                }
+            }
+
             // 文本框字符计数
             $('#taskInput').on('input', function(){
                 const length = $(this).val().length;
@@ -326,6 +506,7 @@
 
                 const time = util.toDateString(new Date(), 'yyyy-MM-dd HH:mm:ss');
                 const responseId = ++taskId;
+                console.log(`[SendTask] 创建新任务，responseId: ${responseId}, task: ${task.substring(0, 50)}...`);
 
                 const responseItem = $(`
                     <div class="layui-timeline-item" style="padding-bottom: 20px;">
@@ -354,7 +535,7 @@
                     </div>
                 `);
 
-                responseItem.data('taskId', responseId);
+                responseItem.attr('data-task-id', responseId);
                 responseItem.data('task', task);
                 responseList.prepend(responseItem);
                 emptyState.hide();
@@ -385,12 +566,14 @@
                     function processStream() {
                         return reader.read().then(({ done, value }) => {
                             if (done) {
-                                // 流结束
-                                document.querySelector(`#streaming-${responseId}`).innerHTML = `
+                                // 流结束 - 只显示完成状态，不需要保存（因为在handleStreamingData中已经实时保存了）
+                                const container = document.querySelector(`#streaming-${responseId}`);
+                                container.innerHTML = `
                                     <div style="color: #999; font-size: 14px;">
                                         <i class="layui-icon layui-icon-ok-circle" style="color: #5FB878;"></i> 任务完成
                                     </div>
                                 `;
+                                console.log('[Streaming] 流结束，任务已完成');
                                 return;
                             }
 
@@ -428,11 +611,24 @@
                 }).catch(error => {
                     layer.close(loadIndex);
                     console.error('Streaming error:', error);
-                    document.querySelector(`#streaming-${responseId}`).innerHTML = `
+                    const container = document.querySelector(`#streaming-${responseId}`);
+                    container.innerHTML = `
                         <div style="color: #FF5722; font-size: 14px;">
                             <i class="layui-icon layui-icon-close-fill"></i> 错误: ${error.message}
                         </div>
                     `;
+
+                    // 即使出错也保存任务到历史记录
+                    const responseItem = $(`[data-task-id="${responseId}"]`);
+                    if (responseItem.length) {
+                        const taskData = {
+                            id: responseId,
+                            task: responseItem.data('task'),
+                            timestamp: new Date().getTime(),
+                            responseContent: compressResponseContent(container.innerHTML)
+                        };
+                        saveTaskHistory(taskData);
+                    }
                 });
 
                 $('#taskInput').val('');
@@ -441,8 +637,12 @@
 
             // 处理 streaming 数据
             function handleStreamingData(responseId, data, progress) {
+                console.log(`[handleStreamingData] 收到数据，responseId: ${responseId}, type: ${data.type}`);
                 const container = document.querySelector(`#streaming-${responseId}`);
-                if (!container) return;
+                if (!container) {
+                    console.warn(`[handleStreamingData] 未找到容器 #streaming-${responseId}`);
+                    return;
+                }
 
                 if (data.type === 'sent') {
                     container.innerHTML = `
@@ -509,6 +709,35 @@
 
                     // 自动滚动到底部
                     responseDiv.scrollTop = responseDiv.scrollHeight;
+
+                    // 实时保存到历史记录（更新已有记录）
+                    const responseItem = $(`[data-task-id="${responseId}"]`);
+                    if (responseItem.length) {
+                        const taskData = {
+                            id: responseId,
+                            task: responseItem.data('task'),
+                            timestamp: new Date().getTime(),
+                            responseContent: compressResponseContent(container.innerHTML)
+                        };
+                        console.log('[Streaming Update] 正在更新历史记录，responseId:', responseId);
+                        let history = loadFromLocalStorage('taskHistory', []);
+                        console.log('[Streaming Update] 当前历史记录数量:', history.length);
+                        // 更新或添加记录
+                        const existingIndex = history.findIndex(h => h.id === responseId);
+                        if (existingIndex >= 0) {
+                            console.log('[Streaming Update] 更新现有记录');
+                            history[existingIndex] = taskData;
+                        } else {
+                            console.log('[Streaming Update] 添加新记录');
+                            history.unshift(taskData);
+                        }
+                        // 只保留最近100条
+                        if (history.length > 100) {
+                            history = history.slice(0, 100);
+                        }
+                        console.log('[Streaming Update] 保存后历史记录数量:', history.length);
+                        saveToLocalStorage('taskHistory', history);
+                    }
                 } else if (data.type === 'error') {
                     container.innerHTML = `
                         <div style="color: #FF5722; font-size: 14px;">
@@ -547,6 +776,10 @@
                     if (!container.querySelector('.status-text')) {
                         container.appendChild(statusDiv);
                     }
+
+                    // 更新任务完成状态，但不需要再次保存（因为在handleStreamingData中已经实时保存了）
+                    console.log('[Streaming] 任务完成，responseId:', responseId);
+                    console.log('[Streaming] 任务已通过实时更新保存，无需再次保存');
                 }
             }
 
@@ -589,7 +822,7 @@
                     </div>
                 `);
 
-                responseItem.data('taskId', responseId);
+                responseItem.attr('data-task-id', responseId);
                 responseItem.data('task', task);
                 responseItem.data('response', response);
 
@@ -634,6 +867,9 @@
                     responseCount = 0;
                     taskId = 0;
                     updateResponseCount();
+                    // 同时清空本地存储
+                    localStorage.removeItem('taskHistory');
+                    updateHistoryCount();
                     layer.close(index);
                     layer.msg('已清空所有记录', {icon: 1});
                 });
@@ -643,6 +879,102 @@
             function updateResponseCount() {
                 $('#responseCount').text(`${responseCount} 条记录`);
             }
+
+            // 更新历史记录计数
+            function updateHistoryCount() {
+                const history = loadTaskHistory();
+                $('#historyCount').text(`历史记录: ${history.length} 条`);
+            }
+
+            // 显示历史记录弹窗（已移除按钮，但保留函数以供调试使用）
+            window.showHistory = function() {
+                const history = loadTaskHistory();
+                console.log('加载的历史记录:', history); // 调试日志
+                let historyHtml = '';
+
+                if (history.length === 0) {
+                    historyHtml = '<div class="layui-text-center" style="padding: 20px;"><i class="layui-icon layui-icon-face-surprised" style="font-size: 48px; color: #999;"></i><p style="color: #999; margin-top: 10px;">暂无历史记录</p><p style="color: #999; font-size: 12px;">提示：请先发送一些任务</p></div>';
+                } else {
+                    historyHtml = '<div class="layui-timeline" style="max-height: 500px; overflow-y: auto; padding: 20px;">';
+                    history.forEach(item => {
+                        const time = util.toDateString(new Date(item.timestamp), 'yyyy-MM-dd HH:mm:ss');
+                        historyHtml += `
+                            <div class="layui-timeline-item">
+                                <i class="layui-icon layui-timeline-axis layui-icon-ok-circle" style="color: #5FB878;"></i>
+                                <div class="layui-timeline-content layui-text">
+                                    <div class="layui-card">
+                                        <div class="layui-card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                                            <span class="layui-badge layui-bg-green" style="font-size: 12px;">任务 #${item.id}</span>
+                                            <span style="color: #999; font-size: 12px;">${time}</span>
+                                        </div>
+                                        <div class="layui-card-body">
+                                            <blockquote class="layui-elem-quote" style="margin-bottom: 10px;">
+                                                <strong>任务:</strong> ${item.task}
+                                            </blockquote>
+                                            <div style="margin-bottom: 10px;">
+                                                <button class="layui-btn layui-btn-xs layui-btn-normal" onclick="reuseTask('${item.task.replace(/'/g, "\\'")}')">
+                                                    <i class="layui-icon layui-icon-refresh"></i> 复用任务
+                                                </button>
+                                                <button class="layui-btn layui-btn-xs layui-btn-danger" onclick="deleteHistoryItem(${item.timestamp})">
+                                                    <i class="layui-icon layui-icon-delete"></i> 删除
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    historyHtml += '</div>';
+                }
+
+                layer.open({
+                    type: 1,
+                    title: '历史记录',
+                    area: ['80%', '80%'],
+                    maxmin: true,
+                    content: historyHtml,
+                    btn: ['清空所有历史', '关闭'],
+                    btn1: function(index) {
+                        layer.confirm('确定要清空所有历史记录吗？', {icon: 3, title: '提示'}, function(i){
+                            localStorage.removeItem('taskHistory');
+                            layer.close(i);
+                            layer.close(index);
+                            layer.msg('历史记录已清空', {icon: 1});
+                            // 刷新页面显示
+                            location.reload();
+                        });
+                    },
+                    btn2: function(index) {
+                        layer.close(index);
+                        updateHistoryCount();
+                    }
+                });
+            };
+
+            // 复用任务
+            window.reuseTask = function(task) {
+                $('#taskInput').val(task);
+                $('#charCount').text(task.length);
+                layer.closeAll('page');
+                layer.msg('任务已填入', {icon: 1});
+                $('#taskInput').focus();
+            };
+
+            // 删除单个历史记录
+            window.deleteHistoryItem = function(timestamp) {
+                layer.confirm('确定要删除这条记录吗？', {icon: 3, title: '提示'}, function(index){
+                    let history = loadTaskHistory();
+                    history = history.filter(item => item.timestamp !== timestamp);
+                    saveToLocalStorage('taskHistory', history);
+                    updateHistoryCount();
+                    layer.close(index);
+                    layer.msg('记录已删除', {icon: 1});
+                    // 刷新历史记录窗口
+                    layer.closeAll('page');
+                    showHistory();
+                });
+            };
 
             // 绑定按钮事件
             $('#sendButton').on('click', sendTask);
@@ -675,6 +1007,135 @@
                     statusIndicator.html('<i class="layui-icon layui-icon-close-fill"></i> <span>未连接</span>');
                 });
             }
+
+            // 页面加载时恢复历史记录
+            function loadHistoryOnPageLoad() {
+                const history = loadTaskHistory();
+                console.log('页面加载时发现的历史记录数量:', history.length); // 调试日志
+                const responseList = $('#responseList');
+                const emptyState = $('#emptyState');
+
+                if (history.length > 0) {
+                    responseList.empty();
+                    responseList.addClass('layui-timeline');
+                    emptyState.hide();
+
+                    history.forEach(item => {
+                        const time = util.toDateString(new Date(item.timestamp), 'yyyy-MM-dd HH:mm:ss');
+                        const responseItem = $(`
+                            <div class="layui-timeline-item" style="padding-bottom: 20px;">
+                                <i class="layui-icon layui-timeline-axis layui-icon-ok-circle" style="color: #5FB878;"></i>
+                                <div class="layui-timeline-content layui-text">
+                                    <div class="layui-card">
+                                        <div class="layui-card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                                            <span class="layui-badge layui-bg-green" style="font-size: 12px;">任务 #${item.id}</span>
+                                            <span style="color: #999; font-size: 12px;">${time}</span>
+                                        </div>
+                                        <div class="layui-card-body">
+                                            <blockquote class="layui-elem-quote" style="margin-bottom: 10px;">
+                                                <strong>任务:</strong> ${item.task}
+                                            </blockquote>
+                                            <div id="streaming-${item.id}" style="color: #666; line-height: 1.6;">
+                                                ${item.responseContent}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        `);
+
+                        responseItem.attr('data-task-id', item.id);
+                        responseItem.data('task', item.task);
+                        responseList.append(responseItem);
+                    });
+
+                    responseCount = history.length;
+                    taskId = Math.max(...history.map(h => h.id), 0);
+                    updateResponseCount();
+                }
+            }
+
+            // 页面加载完成后执行
+            loadHistoryOnPageLoad();
+
+            // 检查localStorage使用情况（用于调试）
+            setTimeout(() => {
+                console.log('=== localStorage调试信息 ===');
+                const usage = checkLocalStorageUsage();
+                if (usage) {
+                    console.log('localStorage空间检查正常');
+                } else {
+                    console.error('localStorage空间检查异常');
+                }
+
+                // 测试基本功能
+                const basicTest = window.debugLocalStorage.testBasic();
+                if (!basicTest) {
+                    console.error('localStorage基本功能测试失败！');
+                }
+
+                // 显示所有键
+                window.debugLocalStorage.showAllKeys();
+            }, 1000);
+
+            // 添加调试工具到全局作用域
+            window.debugLocalStorage = {
+                checkUsage: checkLocalStorageUsage,
+                clearHistory: function() {
+                    if (confirm('确定要清空所有历史记录吗？\n这将同时清空页面上的所有显示记录。')) {
+                        localStorage.removeItem('taskHistory');
+                        console.log('历史记录已清空');
+                        // 同时清空页面上的显示
+                        $('#responseList').empty().removeClass('layui-timeline');
+                        $('#emptyState').show();
+                        responseCount = 0;
+                        taskId = 0;
+                        updateHistoryCount();
+                        console.log('页面显示已清空');
+                    }
+                },
+                showHistory: function() {
+                    const history = loadFromLocalStorage('taskHistory', []);
+                    console.log('当前历史记录:', history);
+                    return history;
+                },
+                testSave: function() {
+                    const testData = { id: Date.now(), task: '测试任务', timestamp: Date.now(), responseContent: '<div>测试内容</div>' };
+                    const result = saveTaskHistory(testData);
+                    console.log('测试保存结果:', result);
+                    return result;
+                },
+                testBasic: function() {
+                    console.log('=== 测试localStorage基本功能 ===');
+                    try {
+                        // 测试写入
+                        localStorage.setItem('test_key', 'test_value');
+                        const value = localStorage.getItem('test_key');
+                        if (value === 'test_value') {
+                            console.log('✓ localStorage基本功能正常');
+                            localStorage.removeItem('test_key');
+                            return true;
+                        } else {
+                            console.error('✗ localStorage读取值不匹配');
+                            return false;
+                        }
+                    } catch (e) {
+                        console.error('✗ localStorage基本功能异常:', e);
+                        return false;
+                    }
+                },
+                showAllKeys: function() {
+                    console.log('=== localStorage中的所有键 ===');
+                    const keys = Object.keys(localStorage);
+                    keys.forEach(key => {
+                        const size = localStorage[key].length;
+                        console.log(`- ${key}: ${(size / 1024).toFixed(2)} KB`);
+                    });
+                    return keys;
+                }
+            };
+
+            console.log('localStorage调试工具已添加到 window.debugLocalStorage');
 
             // 每5秒更新状态
             setInterval(updateStatus, 5000);

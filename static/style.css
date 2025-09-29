@@ -1,63 +1,5 @@
 /* AutoGLMUI - 基于Layui框架的优化样式 */
 
-/* 暗色主题支持 */
-.dark-theme {
-    background-color: #1a1a1a !important;
-    color: #e0e0e0 !important;
-}
-
-.dark-theme .layui-card {
-    background-color: #2d2d2d !important;
-    border-color: #444 !important;
-}
-
-.dark-theme .layui-card-header {
-    background-color: #2d2d2d !important;
-    color: #e0e0e0 !important;
-    border-color: #444 !important;
-}
-
-.dark-theme .layui-card-body {
-    background-color: #2d2d2d !important;
-    color: #e0e0e0 !important;
-}
-
-.dark-theme .layui-btn-primary {
-    background-color: #3a3a3a !important;
-    color: #e0e0e0 !important;
-    border-color: #555 !important;
-}
-
-.dark-theme .layui-btn-primary:hover {
-    background-color: #444 !important;
-    border-color: #666 !important;
-}
-
-.dark-theme .layui-textarea {
-    background-color: #3a3a3a !important;
-    border-color: #555 !important;
-    color: #e0e0e0 !important;
-}
-
-.dark-theme .layui-textarea:focus {
-    border-color: #1E9FFF !important;
-}
-
-.dark-theme .layui-elem-quote {
-    background-color: #3a3a3a !important;
-    border-left-color: #1E9FFF !important;
-    color: #e0e0e0 !important;
-}
-
-.dark-theme .layui-timeline-item:before {
-    background-color: #555 !important;
-}
-
-.dark-theme .layui-badge {
-    background-color: #444 !important;
-    color: #e0e0e0 !important;
-}
-
 /* 响应式优化 */
 @media screen and (max-width: 768px) {
     .layui-container {
@@ -205,9 +147,6 @@
     box-shadow: 0 0 0 4px rgba(30,159,255,0.1) !important;
 }
 
-.dark-theme .layui-timeline-axis {
-    background-color: #2d2d2d !important;
-}
 
 /* 状态指示器动画 */
 #statusIndicator {
@@ -264,10 +203,6 @@
     border-left: 4px solid #1E9FFF;
 }
 
-.dark-theme .toast {
-    background: #2d2d2d;
-    color: #e0e0e0;
-}
 
 /* 加载状态优化 */
 .layui-btn-loading .layui-icon {
@@ -302,17 +237,6 @@
     background: #ccc;
 }
 
-.dark-theme #responseList::-webkit-scrollbar-track {
-    background: #444;
-}
-
-.dark-theme #responseList::-webkit-scrollbar-thumb {
-    background: #666;
-}
-
-.dark-theme #responseList::-webkit-scrollbar-thumb:hover {
-    background: #777;
-}
 
 /* 响应卡片悬停效果 */
 .layui-card {
@@ -323,9 +247,6 @@
     box-shadow: 0 4px 16px rgba(0,0,0,0.1) !important;
 }
 
-.dark-theme .layui-card:hover {
-    box-shadow: 0 4px 16px rgba(0,0,0,0.3) !important;
-}
 
 /* 按钮点击效果 */
 .layui-btn:active {
@@ -347,14 +268,6 @@
     padding: 15px !important;
 }
 
-/* 主题切换按钮 */
-#themeToggle {
-    transition: all 0.3s !important;
-}
-
-#themeToggle:hover {
-    transform: scale(1.1) !important;
-}
 
 /* 复制按钮优化 */
 .layui-btn-xs {

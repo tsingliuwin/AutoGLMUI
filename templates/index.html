@@ -16,11 +16,6 @@
                 <h1 style="margin: 0; font-size: 24px; color: #1E9FFF;">
                     <i class="layui-icon layui-icon-voice"></i> AutoGLMUI
                 </h1>
-                <div class="layui-btn-group">
-                    <button class="layui-btn layui-btn-primary layui-btn-sm" id="themeToggle" title="切换主题">
-                        <i class="layui-icon layui-icon-light"></i>
-                    </button>
-                </div>
             </div>
         </div>
 
@@ -174,7 +169,7 @@
                         </div>
                     </div>
                     <div class="layui-text-center" style="margin-top: 10px;">
-                        <button class="layui-btn layui-btn-xs layui-btn-primary" onclick="loadMoreExamples()">
+                        <button class="layui-btn layui-btn-xs layui-btn-primary" id="loadMoreBtn">
                             <i class="layui-icon layui-icon-down"></i> 展开更多
                         </button>
                     </div>
@@ -237,6 +232,32 @@
     <div class="toast-container" id="toastContainer"></div>
 
     <script>
+        // 展开更多示例功能
+        document.addEventListener('DOMContentLoaded', function() {
+            var loadMoreBtn = document.getElementById('loadMoreBtn');
+            if (loadMoreBtn) {
+                loadMoreBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    var isExpanded = this.innerHTML.includes('收起示例');
+                    var moreExamples = document.querySelectorAll('.more-example');
+
+                    if (isExpanded) {
+                        // 收起
+                        moreExamples.forEach(function(el) {
+                            el.style.display = 'none';
+                        });
+                        this.innerHTML = '<i class="layui-icon layui-icon-down"></i> 展开更多';
+                    } else {
+                        // 展开
+                        moreExamples.forEach(function(el) {
+                            el.style.setProperty('display', 'block', 'important');
+                        });
+                        this.innerHTML = '<i class="layui-icon layui-icon-up"></i> 收起示例';
+                    }
+                });
+            }
+        });
+
         layui.use(['layer', 'form', 'element', 'util'], function(){
             var layer = layui.layer;
             var form = layui.form;
@@ -244,13 +265,7 @@
             var util = layui.util;
             var $ = layui.$;
 
-            // 初始化主题
-            const savedTheme = localStorage.getItem('theme') || 'light';
-            if (savedTheme === 'dark') {
-                $('body').addClass('dark-theme');
-                $('#themeToggle').html('<i class="layui-icon layui-icon-moon"></i>');
-            }
-
+  
             // 选择示例
             window.selectExample = function(example) {
                 $('#taskInput').val(example);
@@ -259,7 +274,7 @@
                 $('#taskInput').focus();
 
                 // 如果当前是展开状态，自动收起
-                const btn = $('button[onclick="loadMoreExamples()"]');
+                const btn = $('#loadMoreBtn');
                 const isExpanded = btn.html().includes('收起示例');
                 if (isExpanded) {
                     setTimeout(function() {
@@ -274,36 +289,8 @@
                 }
             };
 
-            // 展开更多示例
-            window.loadMoreExamples = function() {
-                const btn = event.target.closest('button');
-                const isExpanded = btn.innerHTML.includes('收起示例');
-
-                if (isExpanded) {
-                    // 收起
-                    $('.more-example').hide();
-                    btn.innerHTML = '<i class="layui-icon layui-icon-down"></i> 展开更多';
-                } else {
-                    // 展开
-                    $('.more-example').show();
-                    btn.innerHTML = '<i class="layui-icon layui-icon-up"></i> 收起示例';
-                }
-            };
-
-            // 主题切换
-            $('#themeToggle').on('click', function(){
-                const body = $('body');
-                if (body.hasClass('dark-theme')) {
-                    body.removeClass('dark-theme');
-                    localStorage.setItem('theme', 'light');
-                    $(this).html('<i class="layui-icon layui-icon-light"></i>');
-                } else {
-                    body.addClass('dark-theme');
-                    localStorage.setItem('theme', 'dark');
-                    $(this).html('<i class="layui-icon layui-icon-moon"></i>');
-                }
-            });
-
+        
+    
             let taskId = 0;
             let responseCount = 0;
 

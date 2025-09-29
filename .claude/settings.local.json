@@ -13,7 +13,9 @@
       "Bash(curl:*)",
       "Bash(powershell:*)",
       "Bash(dir:*)",
-      "Bash(uv sync:*)"
+      "Bash(uv sync:*)",
+      "Bash(start:*)",
+      "WebSearch"
     ],
     "deny": [],
     "ask": []

@@ -212,3 +212,4 @@ auto_old.py
 main_old.py
 logs/
 *.log
+.claude

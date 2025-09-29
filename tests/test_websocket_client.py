@@ -27,9 +27,10 @@ class TestWebSocketClient:
 
         # Parse JSON to verify structure
         msg_data = json.loads(message)
-        assert msg_data["msg_type"] == "client_test"
+        assert msg_data["msg_type"] == "client_task"
         assert msg_data["data"]["instruction"] == "test instruction"
-        assert msg_data["conversation_id"] == ""
+        assert msg_data["data"]["biz_type"] == "agent_chat"
+        assert msg_data["conversation_id"] != ""
         assert "timestamp" in msg_data
         assert "msg_id" in msg_data
 

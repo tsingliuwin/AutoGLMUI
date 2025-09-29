@@ -315,31 +315,240 @@
                 // 显示加载
                 const loadIndex = layer.load(2, {shade: [0.1, '#fff']});
 
-                $.ajax({
-                    url: '/api/send-task',
-                    type: 'POST',
-                    contentType: 'application/json',
-                    data: JSON.stringify({ task: task }),
-                    success: function(result) {
-                        layer.close(loadIndex);
-                        if (result.success) {
-                            $('#taskInput').val('');
-                            $('#charCount').text('0');
-                            showResponse(task, '任务已发送', new Date().toISOString());
-                            layer.msg('任务发送成功', {icon: 1});
-                        } else {
-                            showResponse(task, `错误: ${result.error}`, new Date().toISOString());
-                            layer.msg(`发送失败: ${result.error}`, {icon: 2});
-                        }
+                // 创建新的响应项
+                const responseList = $('#responseList');
+                const emptyState = $('#emptyState');
+
+                if (responseCount === 0) {
+                    responseList.empty();
+                    responseList.addClass('layui-timeline');
+                }
+
+                const time = util.toDateString(new Date(), 'yyyy-MM-dd HH:mm:ss');
+                const responseId = ++taskId;
+
+                const responseItem = $(`
+                    <div class="layui-timeline-item" style="padding-bottom: 20px;">
+                        <i class="layui-icon layui-timeline-axis layui-icon-loading-1" style="color: #1E9FFF;"></i>
+                        <div class="layui-timeline-content layui-text">
+                            <div class="layui-card">
+                                <div class="layui-card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                                    <span class="layui-badge layui-bg-blue" style="font-size: 12px;">任务 #${responseId}</span>
+                                    <span style="color: #999; font-size: 12px;">${time}</span>
+                                </div>
+                                <div class="layui-card-body">
+                                    <blockquote class="layui-elem-quote" style="margin-bottom: 10px;">
+                                        <strong>任务:</strong> ${task}
+                                    </blockquote>
+                                    <div id="streaming-${responseId}" style="color: #666; line-height: 1.6;">
+                                        <div class="layui-progress layui-progress-big" lay-showpercent="true" lay-filter="progress-${responseId}">
+                                            <div class="layui-progress-bar" lay-percent="0%"></div>
+                                        </div>
+                                        <div style="margin-top: 10px; font-size: 14px; color: #999;">
+                                            <i class="layui-icon layui-icon-loading layui-anim layui-anim-rotate layui-anim-loop"></i> 等待响应...
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `);
+
+                responseItem.data('taskId', responseId);
+                responseItem.data('task', task);
+                responseList.prepend(responseItem);
+                emptyState.hide();
+                responseCount++;
+                updateResponseCount();
+
+                // 初始化进度条
+                element.render('progress');
+
+                // 使用 HTTP Streaming
+                fetch('/api/send-task-stream', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
                     },
-                    error: function(xhr) {
-                        layer.close(loadIndex);
-                        const errorMsg = xhr.responseJSON?.error || '网络错误';
-                        showResponse(task, `网络错误: ${errorMsg}`, new Date().toISOString());
-                        layer.msg('网络错误，请检查连接', {icon: 2});
+                    body: JSON.stringify({ task: task })
+                }).then(response => {
+                    layer.close(loadIndex);
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
                     }
+
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    let progress = 0;
+                    let buffer = '';
+
+                    function processStream() {
+                        return reader.read().then(({ done, value }) => {
+                            if (done) {
+                                // 流结束
+                                document.querySelector(`#streaming-${responseId}`).innerHTML = `
+                                    <div style="color: #999; font-size: 14px;">
+                                        <i class="layui-icon layui-icon-ok-circle" style="color: #5FB878;"></i> 任务完成
+                                    </div>
+                                `;
+                                return;
+                            }
+
+                            // 解码新的数据块
+                            const chunk = decoder.decode(value, { stream: true });
+                            buffer += chunk;
+
+                            // 按行分割数据
+                            const lines = buffer.split('\n');
+                            buffer = lines.pop(); // 保留最后一个可能不完整的行
+
+                            // 处理每一行
+                            lines.forEach(line => {
+                                if (line.trim()) {
+                                    try {
+                                        const data = JSON.parse(line);
+                                        handleStreamingData(responseId, data, progress);
+
+                                        // 更新进度
+                                        if (data.type === 'response') {
+                                            progress = Math.min(progress + 10, 90);
+                                            element.progress('progress-' + responseId, progress + '%');
+                                        }
+                                    } catch (e) {
+                                        console.error('Error parsing streaming data:', e, 'Raw data:', line);
+                                    }
+                                }
+                            });
+
+                            return processStream();
+                        });
+                    }
+
+                    return processStream();
+                }).catch(error => {
+                    layer.close(loadIndex);
+                    console.error('Streaming error:', error);
+                    document.querySelector(`#streaming-${responseId}`).innerHTML = `
+                        <div style="color: #FF5722; font-size: 14px;">
+                            <i class="layui-icon layui-icon-close-fill"></i> 错误: ${error.message}
+                        </div>
+                    `;
                 });
+
+                $('#taskInput').val('');
+                $('#charCount').text('0');
             };
+
+            // 处理 streaming 数据
+            function handleStreamingData(responseId, data, progress) {
+                const container = document.querySelector(`#streaming-${responseId}`);
+                if (!container) return;
+
+                if (data.type === 'sent') {
+                    container.innerHTML = `
+                        <div class="layui-progress layui-progress-big" lay-showpercent="true" lay-filter="progress-${responseId}">
+                            <div class="layui-progress-bar" lay-percent="0%"></div>
+                        </div>
+                        <div style="margin-top: 10px; font-size: 14px; color: #999;">
+                            <i class="layui-icon layui-icon-loading layui-anim layui-anim-rotate layui-anim-loop"></i> 任务已发送，等待响应...
+                        </div>
+                    `;
+                    element.render('progress');
+                } else if (data.type === 'response') {
+                    const msgType = data.data.msg_type || 'unknown';
+                    const parsedData = data.data.parsed_data;
+
+                    // 创建或获取响应内容容器
+                    const responseDiv = container.querySelector('.response-content') || document.createElement('div');
+                    responseDiv.className = 'response-content';
+                    responseDiv.style.marginTop = '10px';
+                    responseDiv.style.padding = '10px';
+                    responseDiv.style.backgroundColor = '#f8f8f8';
+                    responseDiv.style.borderRadius = '4px';
+                    responseDiv.style.fontSize = '14px';
+                    responseDiv.style.whiteSpace = 'pre-wrap';
+                    responseDiv.style.maxHeight = '400px';
+                    responseDiv.style.overflowY = 'auto';
+
+                    // 根据消息类型格式化显示
+                    let displayContent = '';
+                    const timestamp = new Date(data.data.timestamp).toLocaleTimeString();
+
+                    if (msgType === 'server_init') {
+                        displayContent = `[${timestamp}] 🔧 系统初始化完成\n`;
+                    } else if (msgType === 'server_session') {
+                        displayContent = `[${timestamp}] 🔒 会话已建立\n`;
+                    } else if (msgType === 'agent_response') {
+                        const content = parsedData?.data?.content || parsedData?.content || '代理响应';
+                        displayContent = `[${timestamp}] 🤖 代理响应:\n${content}\n\n`;
+                    } else if (msgType === 'task_result') {
+                        const result = parsedData?.data?.result || parsedData?.result || '任务完成';
+                        displayContent = `[${timestamp}] ✅ 任务结果:\n${result}\n\n`;
+                    } else if (msgType === 'task_status') {
+                        const status = parsedData?.data?.status || '状态更新';
+                        displayContent = `[${timestamp}] 📊 任务状态: ${status}\n`;
+                    } else if (msgType === 'error') {
+                        const errorMsg = parsedData?.data?.error || parsedData?.error || '发生错误';
+                        displayContent = `[${timestamp}] ❌ 错误: ${errorMsg}\n`;
+                    } else {
+                        // 显示原始消息或解析后的内容
+                        const message = parsedData?.data?.message || parsedData?.message || data.data.message;
+                        if (message) {
+                            displayContent = `[${timestamp}] 📨 ${message}\n\n`;
+                        }
+                    }
+
+                    // 追加到现有内容
+                    if (displayContent) {
+                        responseDiv.textContent += displayContent;
+                    }
+
+                    if (!container.querySelector('.response-content')) {
+                        container.appendChild(responseDiv);
+                    }
+
+                    // 自动滚动到底部
+                    responseDiv.scrollTop = responseDiv.scrollHeight;
+                } else if (data.type === 'error') {
+                    container.innerHTML = `
+                        <div style="color: #FF5722; font-size: 14px;">
+                            <i class="layui-icon layui-icon-close-fill"></i> 错误: ${data.message}
+                        </div>
+                    `;
+                } else if (data.type === 'complete') {
+                    element.progress('progress-' + responseId, '100%');
+
+                    // 更新进度条显示
+                    const progressBar = container.querySelector('.layui-progress');
+                    if (progressBar) {
+                        progressBar.style.display = 'none';
+                    }
+
+                    // 更新状态图标
+                    const statusIcon = container.querySelector('.layui-icon-loading');
+                    if (statusIcon) {
+                        statusIcon.className = 'layui-icon layui-icon-ok-circle';
+                        statusIcon.style.color = '#5FB878';
+                        statusIcon.classList.remove('layui-anim', 'layui-anim-rotate', 'layui-anim-loop');
+                    }
+
+                    // 添加完成信息
+                    const completeMsg = data.response_count ?
+                        `任务完成 (共收到 ${data.response_count} 条响应)` :
+                        '任务完成';
+
+                    const statusDiv = container.querySelector('.status-text') || document.createElement('div');
+                    statusDiv.className = 'status-text';
+                    statusDiv.style.marginTop = '10px';
+                    statusDiv.style.fontSize = '14px';
+                    statusDiv.style.color = '#5FB878';
+                    statusDiv.innerHTML = `<i class="layui-icon layui-icon-ok-circle"></i> ${completeMsg}`;
+
+                    if (!container.querySelector('.status-text')) {
+                        container.appendChild(statusDiv);
+                    }
+                }
+            }
 
             // 显示响应
             function showResponse(task, response, timestamp) {

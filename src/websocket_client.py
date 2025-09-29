@@ -45,16 +45,27 @@ class WebSocketClient:
     @property
     def is_connected(self) -> bool:
         """Check if WebSocket is connected"""
-        return self._status == ConnectionStatus.CONNECTED and self.ws and self.ws.sock and self.ws.sock.connected
+        return (
+            self._status == ConnectionStatus.CONNECTED and
+            self.ws is not None and
+            hasattr(self.ws, 'sock') and
+            self.ws.sock is not None and
+            hasattr(self.ws.sock, 'connected') and
+            self.ws.sock.connected
+        )
 
     def create_message(self, instruction: str) -> str:
         """Create JSON message with instruction content"""
         timestamp = int(time.time() * 1000)
         message_id = str(uuid.uuid4())
 
+        # If no conversation_id is set, generate one based on the message_id
+        if not hasattr(self, '_conversation_id') or not self._conversation_id:
+            self._conversation_id = f"conv-{message_id[:8]}"
+
         message_data = {
             "timestamp": timestamp,
-            "conversation_id": "",
+            "conversation_id": self._conversation_id,
             "msg_type": "client_test",
             "msg_id": message_id,
             "data": {
@@ -114,11 +125,13 @@ class WebSocketClient:
 
     def send_message(self, message: str) -> bool:
         """Send message through WebSocket"""
-        if not self.is_connected:
-            logger.warning("Attempted to send message while disconnected")
+        if not self.is_connected or self.ws is None:
+            logger.warning("Attempted to send message while disconnected or WebSocket is None")
             return False
 
         try:
+            logger.info(f"Sending message with conversation_id: {self._conversation_id}")
+            logger.debug(f"Sending message: {message}")
             self.ws.send(message)
             logger.debug(f"Message sent successfully")
             return True
@@ -169,7 +182,7 @@ class WebSocketClient:
         logger.info("Disconnecting WebSocket...")
         self._stop_event.set()
 
-        if self.ws:
+        if self.ws is not None:
             try:
                 self.ws.close()
                 logger.info("WebSocket disconnected successfully")

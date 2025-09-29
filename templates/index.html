@@ -513,9 +513,9 @@
                         <i class="layui-icon layui-timeline-axis layui-icon-loading-1" style="color: #1E9FFF;"></i>
                         <div class="layui-timeline-content layui-text">
                             <div class="layui-card">
-                                <div class="layui-card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                                <div class="layui-card-header" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;" onclick="toggleTaskDetails(${responseId})">
                                     <span class="layui-badge layui-bg-blue" style="font-size: 12px;">任务 #${responseId}</span>
-                                    <span style="color: #999; font-size: 12px;">${time}</span>
+                                    <span style="color: #999; font-size: 12px;">${time} <i class="layui-icon layui-icon-up" id="toggle-icon-${responseId}" style="margin-left: 5px;"></i></span>
                                 </div>
                                 <div class="layui-card-body">
                                     <blockquote class="layui-elem-quote" style="margin-bottom: 10px;">
@@ -566,13 +566,27 @@
                     function processStream() {
                         return reader.read().then(({ done, value }) => {
                             if (done) {
-                                // 流结束 - 只显示完成状态，不需要保存（因为在handleStreamingData中已经实时保存了）
+                                // 流结束 - 包装内容以便折叠
                                 const container = document.querySelector(`#streaming-${responseId}`);
-                                container.innerHTML = `
-                                    <div style="color: #999; font-size: 14px;">
-                                        <i class="layui-icon layui-icon-ok-circle" style="color: #5FB878;"></i> 任务完成
-                                    </div>
-                                `;
+                                const existingContent = container.innerHTML;
+
+                                // 创建任务详情包装器
+                                const taskDetailsDiv = document.createElement('div');
+                                taskDetailsDiv.className = 'task-details-wrapper';
+                                taskDetailsDiv.innerHTML = existingContent;
+
+                                // 添加完成状态
+                                const completeStatus = document.createElement('div');
+                                completeStatus.style.marginTop = '10px';
+                                completeStatus.style.fontSize = '14px';
+                                completeStatus.style.color = '#5FB878';
+                                completeStatus.innerHTML = '<i class="layui-icon layui-icon-ok-circle"></i> 任务完成';
+
+                                // 清空容器并添加新内容
+                                container.innerHTML = '';
+                                container.appendChild(taskDetailsDiv);
+                                container.appendChild(completeStatus);
+
                                 console.log('[Streaming] 流结束，任务已完成');
                                 return;
                             }
@@ -766,6 +780,27 @@
                         `任务完成 (共收到 ${data.response_count} 条响应)` :
                         '任务完成';
 
+                    // 检查是否已有任务详情包装器
+                    let taskDetailsWrapper = container.querySelector('.task-details-wrapper');
+                    if (!taskDetailsWrapper) {
+                        taskDetailsWrapper = document.createElement('div');
+                        taskDetailsWrapper.className = 'task-details-wrapper';
+
+                        // 将现有内容移到包装器中（除了状态文本）
+                        const existingContent = container.innerHTML;
+                        const tempDiv = document.createElement('div');
+                        tempDiv.innerHTML = existingContent;
+                        const statusDivs = tempDiv.querySelectorAll('.status-text');
+                        statusDivs.forEach(div => div.remove());
+
+                        taskDetailsWrapper.innerHTML = tempDiv.innerHTML;
+
+                        // 清空容器并重新组织
+                        container.innerHTML = '';
+                        container.appendChild(taskDetailsWrapper);
+                    }
+
+                    // 添加或更新状态文本
                     const statusDiv = container.querySelector('.status-text') || document.createElement('div');
                     statusDiv.className = 'status-text';
                     statusDiv.style.marginTop = '10px';
@@ -777,6 +812,7 @@
                         container.appendChild(statusDiv);
                     }
 
+    
                     // 更新任务完成状态，但不需要再次保存（因为在handleStreamingData中已经实时保存了）
                     console.log('[Streaming] 任务完成，responseId:', responseId);
                     console.log('[Streaming] 任务已通过实时更新保存，无需再次保存');
@@ -800,9 +836,9 @@
                         <i class="layui-icon layui-timeline-axis ${statusIcon}" style="color: ${isSuccess ? '#5FB878' : '#FF5722'};"></i>
                         <div class="layui-timeline-content layui-text">
                             <div class="layui-card">
-                                <div class="layui-card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                                <div class="layui-card-header" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;" onclick="toggleTaskDetails(${responseId})">
                                     <span class="${statusClass}" style="font-size: 12px;">任务 #${responseId}</span>
-                                    <span style="color: #999; font-size: 12px;">${time}</span>
+                                    <span style="color: #999; font-size: 12px;">${time} <i class="layui-icon layui-icon-up" id="toggle-icon-${responseId}" style="margin-left: 5px;"></i></span>
                                 </div>
                                 <div class="layui-card-body">
                                     <blockquote class="layui-elem-quote" style="margin-bottom: 10px;">
@@ -851,6 +887,51 @@
                     }).catch(function() {
                         layer.msg('复制失败', {icon: 2});
                     });
+                }
+            };
+
+            // 切换任务详情显示/隐藏
+            window.toggleTaskDetails = function(taskId) {
+                const container = document.querySelector(`#streaming-${taskId}`);
+                if (!container) return;
+
+                // 查找任务详情元素
+                let taskDetailsWrapper = container.querySelector('.task-details-wrapper');
+                let taskDetails = container.querySelector('.task-details');
+                const toggleIcon = document.querySelector(`#toggle-icon-${taskId}`);
+
+                // 如果没有找到 .task-details-wrapper，则使用 .task-details
+                if (!taskDetailsWrapper && taskDetails) {
+                    taskDetailsWrapper = taskDetails;
+                } else if (!taskDetailsWrapper && !taskDetails) {
+                    // 如果都没有，则使用整个 container（除了最后一个子元素）
+                    const children = Array.from(container.children);
+                    if (children.length > 1) {
+                        // 创建包装器
+                        taskDetailsWrapper = document.createElement('div');
+                        taskDetailsWrapper.className = 'task-details-wrapper';
+                        // 将除了最后一个元素外的所有子元素移到包装器中
+                        children.slice(0, -1).forEach(child => {
+                            taskDetailsWrapper.appendChild(child);
+                        });
+                        container.insertBefore(taskDetailsWrapper, container.lastElementChild);
+                    }
+                }
+
+                if (taskDetailsWrapper) {
+                    if (taskDetailsWrapper.style.display === 'none') {
+                        // 展开详情
+                        taskDetailsWrapper.style.display = 'block';
+                        if (toggleIcon) {
+                            toggleIcon.className = 'layui-icon layui-icon-up';
+                        }
+                    } else {
+                        // 收起详情
+                        taskDetailsWrapper.style.display = 'none';
+                        if (toggleIcon) {
+                            toggleIcon.className = 'layui-icon layui-icon-down';
+                        }
+                    }
                 }
             };
 
@@ -1027,16 +1108,18 @@
                                 <i class="layui-icon layui-timeline-axis layui-icon-ok-circle" style="color: #5FB878;"></i>
                                 <div class="layui-timeline-content layui-text">
                                     <div class="layui-card">
-                                        <div class="layui-card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                                        <div class="layui-card-header" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;" onclick="toggleTaskDetails(${item.id})">
                                             <span class="layui-badge layui-bg-green" style="font-size: 12px;">任务 #${item.id}</span>
-                                            <span style="color: #999; font-size: 12px;">${time}</span>
+                                            <span style="color: #999; font-size: 12px;">${time} <i class="layui-icon layui-icon-up" id="toggle-icon-${item.id}" style="margin-left: 5px;"></i></span>
                                         </div>
                                         <div class="layui-card-body">
                                             <blockquote class="layui-elem-quote" style="margin-bottom: 10px;">
                                                 <strong>任务:</strong> ${item.task}
                                             </blockquote>
                                             <div id="streaming-${item.id}" style="color: #666; line-height: 1.6;">
-                                                ${item.responseContent}
+                                                <div class="task-details-wrapper">
+                                                    ${item.responseContent}
+                                                </div>
                                             </div>
                                         </div>
                                     </div>

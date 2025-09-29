@@ -15,7 +15,8 @@
       "Bash(dir:*)",
       "Bash(uv sync:*)",
       "Bash(start:*)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(set:*)"
     ],
     "deny": [],
     "ask": []
